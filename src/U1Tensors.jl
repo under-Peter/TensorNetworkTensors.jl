@@ -23,6 +23,10 @@ U1Tensor(charges, dims, in_out, tensors::Dict{NTuple{N,Int}, Array{T,N}}) where 
 
 U1Tensor(T::Type = ComplexF64) = U1Tensor{T,0}((), (), (), Dict())
 
+function constructnew(::Type{<:U1Tensor}, newfields, newtensor::Dict{NTuple{M,Int},Array{T,M}}) where {M,T}
+    return U1Tensor{T,M}(newfields...,newtensor)
+end
+
 
 #= Helper Functions =#
 scalar(A::U1Tensor{T,0}) where T = first(first(values(A.tensor)))

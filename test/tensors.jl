@@ -40,15 +40,10 @@ end
 @testset "SplitFuse" begin
     au1 = rand(U1Tensor{ComplexF64,3}, (-2:2,-1:1,-2:2),
         ([3,2,1,4,5],[2,1,3],[3,2,1,2,3]),(1,1,-1))
-    bu1 = fuselegs(au1,((1,2),3),(1,-1))[1];
-    cu1 = fuselegs(au1,(1,(2,3)),(-1,-1))[1];
-    du1 = fuselegs(au1,((3,2),1),(1,-1))[1];
-    eu1 = fuselegs(du1,((2,1),),(1,))[1];
-    az2 = rand(ZNTensor{ComplexF64,3,2}, (0:1,0:1,0:1), ([1,3],[4,2],[5,2]),(1,1,-1))
-    bz2 = fuselegs(az2,((1,2),3),(1,1))[1];
-    cz2 = fuselegs(az2,(1,(2,3)),(1,1))[1];
-    dz2 = fuselegs(az2,((3,2),1),(1,-1))[1];
-    ez2 = fuselegs(dz2,((2,1),),(1,))[1];
+    bu1, = fuselegs(au1,((1,2),3),(1,-1));
+    cu1, = fuselegs(au1,(1,(2,3)),(-1,-1));
+    du1, = fuselegs(au1,((3,2),1),(1,-1));
+    eu1, = fuselegs(du1,((2,1),),(1,));
     @tensor begin
          ra[] := au1[1,2,3] * au1'[1,2,3]
          rb[] := bu1[1,2] * bu1'[1,2]
@@ -57,6 +52,13 @@ end
          re[] := eu1[1] * eu1'[1]
     end;
     @test scalar(ra) ≈ scalar(rb) ≈ scalar(rc) ≈ scalar(rd) ≈ scalar(re)
+
+    az2 = rand(ZNTensor{ComplexF64,3,2}, (0:1,0:1,0:1),
+        ([1,3],[4,2],[5,2]),(1,1,-1))
+    bz2, = fuselegs(az2,((1,2),3),(1,1));
+    cz2, = fuselegs(az2,(1,(2,3)),(1,1));
+    dz2, = fuselegs(az2,((3,2),1),(1,-1));
+    ez2, = fuselegs(dz2,((2,1),),(1,));
     @tensor begin
          ra[] := az2[1,2,3] * az2'[1,2,3]
          rb[] := bz2[1,2] * bz2'[1,2]
@@ -66,13 +68,23 @@ end
     end;
     @test scalar(ra) ≈ scalar(rb) ≈ scalar(rc) ≈ scalar(rd) ≈ scalar(re)
 
-    @test fuselegs(fuselegs(au1,(1,2,3),(1,1,1))[1],(1,2,3),(1,1,-1))[1] == au1
-    @test fuselegs(fuselegs(au1,(1,3,2),(1,1,1))[1],(1,3,2),(1,1,-1))[1] == au1
+    az3 = rand(ZNTensor{ComplexF64,3,3}, (0:2,0:2,0:2),
+        ([1,3,6],[4,2,2],[5,2,3]),(1,1,-1))
+    bz3, = fuselegs(az3,((1,2),3),(1,1));
+    cz3, = fuselegs(az3,(1,(2,3)),(1,1));
+    dz3, = fuselegs(az3,((3,2),1),(1,-1));
+    ez3, = fuselegs(dz3,((2,1),),(1,));
+    @tensor begin
+         ra[] := az3[1,2,3] * az3'[1,2,3]
+         rb[] := bz3[1,2] * bz3'[1,2]
+         rc[] := cz3[1,2] * cz3'[1,2]
+         rd[] := dz3[1,2] * dz3'[1,2]
+         re[] := ez3[1] * ez3'[1]
+    end;
+    @test scalar(ra) ≈ scalar(rb) ≈ scalar(rc) ≈ scalar(rd) ≈ scalar(re)
 end
 
 @testset "splitting" begin
-    #= test splitting =#
-
     a = rand(U1Tensor{ComplexF64,3},
             (-1:1,-1:1,-1:1),
             ([2,1,3],[4,1,2],[2,5,2]),
@@ -115,4 +127,34 @@ end
     b, inverter = fuselegs(a, (1,(2,3)), (-1,-1));
     a2 = splitlegs(b, (1,(2,2,1),(2,2,2)), inverter)
     @test a == a2
+end
+
+@testset "TensorSVD" begin
+    chs = -3:3
+    ds = [4 for i in chs]
+    ntype = ComplexF64
+    au1= rand(U1Tensor{ntype,2}, (chs, chs), (ds, ds), (1,-1))
+    u, s, vt = tensorsvd(au1)
+    @tensor au12[1,2] := u[1,-1] * s[-1, -2] * vt[-2,2]
+    @test au12 ≈ au1
+
+    au1= rand(U1Tensor{ntype,2}, (chs, chs), (ds, ds), (-1,-1))
+    u, s, vt = tensorsvd(au1)
+    @tensor au12[1,2] := u[1,-1] * s[-1, -2] * vt[-2,2]
+    @test au12 ≈ au1
+
+    az2 = rand(ZNTensor{ntype,2,2}, ntuple(x -> [1,2], 2), (1,-1))
+    u, s, vt = tensorsvd(az2)
+    @tensor az22[1,2] := u[1,-1] * s[-1, -2] * vt[-2,2]
+    @test az22 ≈ az2
+
+    az2 = rand(ZNTensor{ntype,2,2}, ntuple(x -> [1,2], 2), (-1,-1))
+    u, s, vt = tensorsvd(az2)
+    @tensor az22[1,2] := u[1,-1] * s[-1, -2] * vt[-2,2]
+    @test az22 ≈ az2
+
+    az3= rand(ZNTensor{ntype,2,3}, ntuple(x -> [1,2,3], 2), (1,1))
+    u, s, vt = tensorsvd(az3)
+    @tensor az32[1,2] := u[1,-1] * s[-1, -2] * vt[-2,2]
+    @test az32 ≈ az3
 end
