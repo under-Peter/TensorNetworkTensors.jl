@@ -83,14 +83,14 @@ function fuselegs(A::DTensor, indexes::NTuple...)
     return  (DTensor(reshape(permutedims(A.array, perm), dims...)), inverter)
 end
 
-function splitlegs(A::DTensor{T}, indexes::NTuple{N,Tuple}, inverter) where {N,T}
-	perm  = TT.sortperm(indexes)
+function splitlegs(A::DTensor{T}, indexes::NTuple{N,Union{Int,NTuple{3,Int}}}, inverter) where {N,T}
+    tindexes = map(i -> ifelse( i isa Int, (i,), i), indexes)
+	perm  = TT.sortperm(tindexes)
 	iperm = TT.invperm(perm)
 	indexes = TT.getindices(indexes, perm)
-	dims = zeros(Int, length(indexes))
-    foo((i,)::Tuple{Int}) = size(A, i)
-    foo((l,(m,n))) = inverter[m][n]
-    dims = [foo(i) for i in indexes]::Vector{Int}
+    _pick(i::Tuple{Int}) = size(A, i)
+    _pick((l,m,n)) = inverter[m][n]
+    dims = [_pick(i) for i in indexes]
 	return DTensor{T,N}(permutedims(reshape(A.array, dims...), iperm))
 end
 
@@ -107,14 +107,14 @@ end
 function tensorsvd(A::DTensor{T}, indexes; svdcutfunction = svdcutfun_default) where T
     fA, inverter = fuselegs(A, indexes)
     U, S, Vt = tensorsvd(fA, svdcutfunction=svdcutfunction)
-    if !iszero(length(indexes[1]))
-        l = length(indexes[1])
-        indxs = (ntuple(x -> (1,(1,x)), l)..., (2,))
+    li1 = length(indexes[1])
+    if !iszero(li1)
+        indxs = (ntuple(x -> (1,(1,x)), li1)..., (2,))
         U = splitlegs(U, indxs, inverter)
     end
-    if !iszero(length(indexes[2]))
-        l = length(indexes[2])
-        indxs = ((1,), ntuple(x -> (2,(2,x)), l)...)
+    li2 = length(indexes[2])
+    if !iszero(li2)
+        indxs = ((1,), ntuple(x -> (2,(2,x)), li2)...)
         Vt = splitlegs(Vt, indxs, inverter)
     end
     return (U,S,Vt)

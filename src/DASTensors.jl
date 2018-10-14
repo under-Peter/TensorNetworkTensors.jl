@@ -477,6 +477,22 @@ function tensorsvd(A::T; svdcutfunction = svdcutfun_default) where {T <: DASTens
     return (U, S, V)
 end
 
+function tensorsvd(A::DASTensor, indexes; svdcutfunction = svdcutfun_default)
+    fA, inverter = fuselegs(A, indexes)
+    U, S, Vt = tensorsvd(fA, svdcutfunction=svdcutfunction)
+    li1 = length(indexes[1])
+    if !iszero(li1)
+        indxs = (ntuple(x -> (1,(1,x)), li1)..., (2,))
+        U = splitlegs(U, indxs, inverter)
+    end
+    li2 = length(indexes[2])
+    if !iszero(li2)
+        indxs = ((1,), ntuple(x -> (2,(2,x)), li2)...)
+        Vt = splitlegs(Vt, indxs, inverter)
+    end
+    return (U,S,Vt)
+end
+
 function _tensorsvd(A::AbstractArray; svdcutfunction = svdcutfun_default,
         helper::Bool = false)
     F = svd(A)
