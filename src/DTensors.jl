@@ -26,6 +26,7 @@ Base.:(==)(A, B::DTensor) = false
 Base.:(==)(A::DTensor, B) = false
 apply!(A::DTensor, f) = (A.array[:] = f(A.array); A)
 Base.adjoint(A::DTensor{T,N}) where {T,N} = DTensor{T,N}(conj(A.array))
+diag(a::DTensor{T,2}) where T = diag(a.array)
 
 Base.conj!(A::DTensor) = DTensor(conj!(A.array))
 Base.:(*)(α::Number, A::DTensor) = DTensor( α * A.array)
@@ -95,11 +96,11 @@ function splitlegs(A::DTensor{T}, indexes::NTuple{N,Union{Int,NTuple{3,Int}}}, i
 end
 
 function tensorsvd(A::DTensor{T,2}; svdcutfunction = svdcutfun_default, helper::Bool = false) where T
-    fact   = svd(A.array)
-    cutoff = svdcutfunction(fact.S)
-    U = DTensor{T,2}(fact.U[:, 1:cutoff])
-    S = DTensor{T,2}(Diagonal(fact.S)[1:cutoff, 1:cutoff])
-    Vt = DTensor{T,2}(fact.Vt[1:cutoff, :])
+    F   = svd(A.array)
+    cutoff = svdcutfunction(F.S)
+    U = DTensor{T,2}(F.U[:, 1:cutoff])
+    S = DTensor{T,2}(diagm(0=>F.S)[1:cutoff, 1:cutoff])
+    Vt = DTensor{T,2}(F.Vt[1:cutoff, :])
     helper && return (U, S, Vt, cutoff)
     return (U, S, Vt)
 end

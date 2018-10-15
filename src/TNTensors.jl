@@ -1,7 +1,7 @@
 module TNTensors
 import TensorOperations
 using TupleTools
-using LinearAlgebra: svd, Diagonal
+using LinearAlgebra: svd, Diagonal, diag, diagm
 
 const TT = TupleTools
 include("auxiliaryfunctions.jl")
@@ -15,6 +15,8 @@ export fuselegs, splitlegs, tensorsvd
 
 include("DTensors.jl")
 
+export charges, sizes, in_out, tensor, chargesize
+export setcharges!, setsizes!, setin_out!, settensor!
 export ZNTensor, U1Tensor, todense
 include("DASTensors.jl")
 

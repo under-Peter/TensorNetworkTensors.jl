@@ -60,6 +60,7 @@ function Base.convert(::Type{DTensor{S}}, A::DASTensor{T,N}) where {S,T,N}
 end
 
 todense(A::DASTensor{T,N}) where {T,N} = convert(DTensor{T},A)
+diag(A::DASTensor{T,2}) where T = reduce(vcat,(diag(degen) for degen in values(tensor(a))))
 
 #getters
 @inline charges(A::DASTensor) = A.charges
@@ -499,7 +500,7 @@ function _tensorsvd(A::AbstractArray; svdcutfunction = svdcutfun_default,
     svals = F.S
     cutoff = svdcutfunction(svals)
     U = F.U[:, 1:cutoff]
-    S = Diagonal(svals[1:cutoff])
+    S = diagm(0=>svals[1:cutoff])
     Vt = F.Vt[1:cutoff, :]
     helper && return (U, S, Vt, cutoff)
     return (U, S, Vt)
