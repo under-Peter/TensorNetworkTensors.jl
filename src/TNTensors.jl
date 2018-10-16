@@ -1,7 +1,8 @@
 module TNTensors
 import TensorOperations
 using TupleTools
-using LinearAlgebra: svd, Diagonal, diag, diagm
+using LinearAlgebra: svd, diagm
+import LinearAlgebra: diag
 
 const TT = TupleTools
 include("auxiliaryfunctions.jl")
