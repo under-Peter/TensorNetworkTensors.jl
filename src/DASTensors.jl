@@ -180,16 +180,17 @@ Base.:(*)(α::Number, A::DASTensor) = apply(A, x -> α .* x)
 Base.conj!(A::DASTensor) = apply!(A, conj!)
 Base.conj(A::DASTensor) = apply(A, conj!)
 
+function _errorsadd(A, C, perm)
+    in_out(A) == in_out(C, perm) || throw(ArgumentError("Leg directions don't agree"))
+    charges(A) == charges(C, perm) || throw(ArgumentError("charges don't agree"))
+    sizes(A) == sizes(C, perm) || throw(ArgumentError("sizes don't agree"))
+end
+
 function add!(α::Number, A::DASTensor{T,N}, conjA::Type{Val{CA}},
      β::Number, C::DASTensor{S,N}, indCinA) where {T,S,N,CA}
     #conditions
     perm = TT.sortperm(indCinA)
-    in_out(A) == TT.getindices(in_out(C), perm) ||
-        throw( ArgumentError("Leg directions don't agree"))
-    charges(A) == TT.getindices(charges(C), perm) ||
-        throw( ArgumentError("charges don't agree"))
-    sizes(A) == TT.getindices(sizes(C), perm) ||
-        throw( ArgumentError("sizes don't agree"))
+    _errorsadd(A, C, perm)
 
     for (sector, degeneracy) in tensor(A)
         permsector = TT.permute(sector, perm)
@@ -205,15 +206,16 @@ end
 
 add!(α, A::DASTensor, CA, β, C::DASTensor, p1, p2) = add!(α, A, CA, β, C, (p1...,p2...))
 
+function _errorstrace(A, cindA1::NTuple{N,Int}, cindA2::NTuple{M,Int}, C) where {N,M}
+    N == M || throw(ArgumentError("indices to contract don't pair up") )
+    in_out(A, cindA1) == -1 .* in_out(A, cindA2) || throw(ArgumentError("leg directions don't agree"))
+    charges(A, cindA1) == charges(A, cindA2) || throw(ArgumentError("charges don't agree"))
+end
+
 function trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}}, β, C::DASTensor{S,M},
                 indCinA, cindA1, cindA2) where {T,N,S,M,CA}
     #conditions
-    length(cindA1) == length(cindA2) ||
-        throw(ArgumentError("indices to contract don't pair up") )
-    all(in_out(A,i) == -in_out(A,j) for (i, j) in zip(cindA1, cindA2)) ||
-        throw(ArgumentError("leg directions don't agree"))
-    all(charges(A,i) == charges(A,j) for (i, j) in zip(cindA1, cindA2)) ||
-        throw(ArgumentError("charges don't agree"))
+    _errorstrace(A, cindA1, cindA2, C)
 
     sectors = filter(x -> isequal(TT.getindices(x, cindA1), TT.getindices(x, cindA2)),
                         collect(keys(tensor(A))))
@@ -247,48 +249,46 @@ function _getnewsector(sectorA, sectorB, oindA, oindB, indCinoAB)
         indCinoAB)
 end
 
+function _errorscontract(A, cindA::NTuple{N,Int}, B, cindB::NTuple{M,Int}) where {N,M}
+    N == M || throw(ArgumentError("indices to contract don't tpair up"))
+    in_out(A,cindA) == -1 .* in_out(B,cindB) || throw(ArgumentError("leg directions don't agree"))
+    charges(A,cindA) == charges(B,cindB) || throw( ArgumentError("charges don't agree"))
+end
+
 function contract!(α, A::DASTensor{TA,NA}, ::Type{Val{CA}},
                       B::DASTensor{TB,NB}, ::Type{Val{CB}}, β,
                       C::DASTensor{TC,NC}, oindA, cindA, oindB, cindB,
                       indCinoAB, ::Type{Val{M}}=Val{:native}) where
                       {TA,NA,TB,NB,TC,NC,CA,CB,M}
     #conditions
-    length(cindA) == length(cindB) ||
-        throw(ArgumentError("indices to contract don't tpair up"))
-    all(in_out(A,i) == -in_out(B,j) for (i, j) in zip(cindA, cindB)) ||
-        throw(ArgumentError("leg directions don't agree"))
-    all(charges(A,i) == charges(B,j) for (i, j) in zip(cindA, cindB)) ||
-        throw( ArgumentError("charges don't agree"))
+    _errorscontract(A, cindA, B, cindB)
 
     oinAB = TT.vcat(oindA, .+(oindB, NA))
     indCinAB = map(x -> oinAB[x], indCinoAB)
-    sectorscA = groupby(x -> TT.getindices(x, cindA), keys(tensor(A)))
-    sectorscB = groupby(x -> TT.getindices(x, cindB), keys(tensor(B)))
+    secsA = groupby(x -> TT.getindices(x, cindA), keys(tensor(A)))
+    secsB = groupby(x -> TT.getindices(x, cindB), keys(tensor(B)))
     # collect sectors that contract with each other
-    sectorscAB = intersect(keys(sectorscA), keys(sectorscB))
+    secsAB = intersect(keys(secsA), keys(secsB))
     passedset = Set()
-    for sec in sectorscAB
-        for sectorA in sectorscA[sec], sectorB in sectorscB[sec]
-            newsector = _getnewsector(sectorA, sectorB, oindA, oindB, indCinoAB)
+    for sector in secsAB
+        for secA in secsA[sector], secB in secsB[sector]
+            newsector = _getnewsector(secA, secB, oindA, oindB, indCinoAB)
             if haskey(tensor(C), newsector)
                 if !in(newsector, passedset) #firstpass
                     push!(passedset, newsector)
-                    contract!(α, A[sectorA], Val{CA},
-                                 B[sectorB], Val{CB},
+                    contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
                               β, C[newsector],
                               oindA, cindA, oindB, cindB, indCinoAB, Val{M})
                 else
-                    contract!(α, A[sectorA], Val{CA},
-                                 B[sectorB], Val{CB},
+                    contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
                               1, C[newsector],
                               oindA, cindA, oindB, cindB, indCinoAB, Val{M})
                  end
              else
                 C[newsector] = similar_from_indices(TC, oindA, oindB, indCinoAB, (),
-                                    A[sectorA], B[sectorB], Val{:N}, Val{:N})
+                                    A[secA], B[secB], Val{:N}, Val{:N})
 
-                contract!(α, A[sectorA], Val{CA},
-                             B[sectorB], Val{CB},
+                contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
                           0, C[newsector],
                           oindA, cindA, oindB, cindB, indCinoAB, Val{M})
                 push!(passedset, newsector)
@@ -394,17 +394,13 @@ function splitlegs(A::T, inds::NTuple{M,Union{Int,NTuple{3,Int}}}, inverter) whe
     cchs, cdims = charges(A), sizes(A)
     ntensor = Dict{NTuple{M,Int},Array{S,M}}()
     rinds, iperm, perm = _reduceinds(inds)
-    for (sec, degen) in tensor(A)
-        nsecs, nranges = _splitsec(sec,rinds,sdicts)
+    for (sector, degen) in tensor(A)
+        nsecs, nranges = _splitsec(sector,rinds,sdicts)
         for (nsec, nrange) in zip(nsecs, nranges)
-            dims = _splitsdims((sec, cchs, cdims), (nsec, nchs,ndims), inds, perm)
+            dims = _splitsdims((sector, cchs, cdims), (nsec, nchs,ndims), inds, perm)
             nsec = TT.getindices(nsec, iperm)
-            ntensor[nsec] = copy(   permutedims(
-                                        reshape(
-                                            view(degen, nrange...),
-                                        dims...),
-                                    iperm)
-                                )
+            ntensor[nsec] = copy(permutedims(reshape(view(degen, nrange...),
+                                        dims...), iperm) )
         end
     end
     _pick(i::Int, current, old)  = current[i]
@@ -415,9 +411,9 @@ function splitlegs(A::T, inds::NTuple{M,Union{Int,NTuple{3,Int}}}, inverter) whe
     return constructnew(T, (newchs,newds,newios), ntensor)
 end
 
-function _splitsec(sec, inds, sdicts)
-    _pick(i::Int) = ((sec[i], :),)
-    _pick((l,m,n)) = sdicts[m][sec[l]]
+function _splitsec(sector, inds, sdicts)
+    _pick(i::Int) = ((sector[i], :),)
+    _pick((l,m,n)) = sdicts[m][sector[l]]
     nseccharges = [_pick(i) for i in inds]
     nsecs = []
     nranges = []
@@ -428,8 +424,8 @@ function _splitsec(sec, inds, sdicts)
     return (nsecs, nranges)
 end
 
-function _splitsdims((sec, cchs, cdims), (nsec, nchs, ndims), inds, perm)
-    _pick(i::Int, k)  = cdims[i][findfirst(==(sec[i]), cchs[i])]
+function _splitsdims((sector, cchs, cdims), (nsec, nchs, ndims), inds, perm)
+    _pick(i::Int, k)  = cdims[i][findfirst(==(sector[i]), cchs[i])]
     _pick((l,m,n), k) = ndims[m][n][findfirst(==(nsec[k]), nchs[m][n])]
     [_pick(i,k) for (k,i) in enumerate(TT.getindices(inds,perm))]
 end
