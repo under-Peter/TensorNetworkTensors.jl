@@ -225,9 +225,10 @@ function trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}}, β, C::DASTensor{S,M},
     #conditions
     _errorstrace(A, cindA1, cindA2, C)
 
+    perm = TT.sortperm(indCinA)
     sectors = filter(x -> isequal(TT.getindices(x, cindA1), TT.getindices(x, cindA2)),
                         collect(keys(tensor(A))))
-    newsectors = map(x -> TT.deleteat(x, TT.vcat(cindA1, cindA2)), sectors)
+    newsectors = map(x -> TT.permute(TT.deleteat(x, TT.vcat(cindA1, cindA2)),perm), sectors)
     passedset = Set{}()
     sizehint!(tensor(C), length(tensor(C)) + length(newsectors))
     for (sector, newsector) in zip(sectors, newsectors)
