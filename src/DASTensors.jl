@@ -214,21 +214,43 @@ end
 
 add!(α, A::DASTensor, CA, β, C::DASTensor, p1, p2) = add!(α, A, CA, β, C, (p1...,p2...))
 
-function _errorstrace(A, cindA1::NTuple{N,Int}, cindA2::NTuple{M,Int}, C) where {N,M}
-    N == M || throw(ArgumentError("indices to contract don't pair up") )
-    in_out(A, cindA1) == -1 .* in_out(A, cindA2) || throw(ArgumentError("leg directions don't agree"))
-    charges(A, cindA1) == charges(A, cindA2) || throw(ArgumentError("charges don't agree"))
+function _errorstrace(A::DASTensor{T,N}, cindA1::NTuple{M1,Int}, cindA2::NTuple{M2,Int}, C, indCinA) where {M1,M2,T,N}
+    _invert(a::UnitRange) = (-a.stop):(-a.start)
+    M1 == M2 || throw(ArgumentError("indices to contract don't pair up") )
+    maskA = in_out(A, cindA1) .== -1 .* in_out(A, cindA2)
+    for (m, iA1, iA2) in zip(maskA, cindA1, cindA2) #trace in A
+        if m
+            charges(A, iA1) == charges(A, iA2) || throw(ArgumentError("charges don't agree"))
+            sizes(A, iA1) == sizes(A, iA2) || throw(ArgumentError("sizes don't agree"))
+        else
+            charges(A, iA1) == _invert(charges(A, iA2)) || throw(ArgumentError("charges don't agree"))
+            sizes(A, iA1) == reverse(sizes(A, iA2)) || throw(ArgumentError("sizes don't agree"))
+        end
+    end
+    indsA = TT.sort(indCinA)
+    perm = TT.sortperm(indCinA)
+    maskC = in_out(A, indsA) .== in_out(C, perm)
+    for (m, iA, iC) in zip(maskC, indsA, perm) #trace in A
+        if m
+            charges(A, iA) == charges(C, iC) || throw(ArgumentError("charges don't agree"))
+            sizes(A, iA) == sizes(C, iC) || throw(ArgumentError("sizes don't agree"))
+        else
+            charges(A, iA) == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
+            sizes(A, iA) == reverse(sizes(C, iC)) || throw(ArgumentError("sizes don't agree"))
+        end
+    end
+    return (tuple([ifelse(b,1,-1) for b in maskA]...), tuple([ifelse(b,1,-1) for b in maskC]...))
 end
 
 function trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}}, β, C::DASTensor{S,M},
                 indCinA, cindA1, cindA2) where {T,N,S,M,CA}
     #conditions
-    _errorstrace(A, cindA1, cindA2, C)
+    maskA, maskC = _errorstrace(A, cindA1, cindA2, C, indCinA)
 
     perm = TT.sortperm(indCinA)
-    sectors = filter(x -> isequal(TT.getindices(x, cindA1), TT.getindices(x, cindA2)),
+    sectors = filter(x -> isequal(maskA .* TT.getindices(x, cindA1), TT.getindices(x, cindA2)),
                         collect(keys(tensor(A))))
-    newsectors = map(x -> TT.permute(TT.deleteat(x, TT.vcat(cindA1, cindA2)),perm), sectors)
+    newsectors = map(x -> maskC .* TT.permute(TT.deleteat(x, TT.vcat(cindA1, cindA2)),perm), sectors)
     passedset = Set{}()
     sizehint!(tensor(C), length(tensor(C)) + length(newsectors))
     for (sector, newsector) in zip(sectors, newsectors)
