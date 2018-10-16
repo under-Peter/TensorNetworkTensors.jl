@@ -280,10 +280,34 @@ function _getnewsector(sectorA, sectorB, oindA, oindB, indCinoAB)
         indCinoAB)
 end
 
-function _errorscontract(A, cindA::NTuple{N,Int}, B, cindB::NTuple{M,Int}) where {N,M}
-    N == M || throw(ArgumentError("indices to contract don't tpair up"))
-    in_out(A,cindA) == -1 .* in_out(B,cindB) || throw(ArgumentError("leg directions don't agree"))
-    charges(A,cindA) == charges(B,cindB) || throw( ArgumentError("charges don't agree"))
+function _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
+    length(cindA) == length(cindB) || throw(ArgumentError("indices to contract don't pair up"))
+    length(oindA) + length(oindB) == length(indCinoAB) || throw(ArgumentError("indices to contract don't pair up"))
+    _invert(a::UnitRange) = (-a.stop):(-a.start)
+    maskB = in_out(A,cindA) .== -1 .* in_out(B,cindB)
+    for (m, iA, iB) in zip(maskB, cindA, cindB)
+        if m
+            charges(A,iA) == charges(B,iB) || throw(ArgumentError("charges don't agree"))
+            sizes(A,iA) == sizes(B,iB) || throw(ArgumentError("sizes don't agree"))
+        else
+            charges(A,iA) == _invert(charges(B,iB)) || throw(ArgumentError("charges don't agree"))
+            sizes(A,iA) == reverse(sizes(B,iB)) || throw(ArgumentError("sizes don't agree"))
+        end
+    end
+    ioAB  = TT.vcat(in_out(A), in_out(B))
+    chsAB = TT.vcat(charges(A), charges(B))
+    dsAB  = TT.vcat(sizes(A), sizes(B))
+    maskAB = TT.getindices(ioAB,indCinoAB) .== in_out(C)
+    for (m, iAB, iC) in zip(maskB, indCinoAB, 1:length(indCinoAB))
+        if m
+            chsAB[iAB] == charges(C, iC)|| throw(ArgumentError("charges don't agree"))
+            dsAB[iAB] == sizes(C,iC) || throw(ArgumentError("sizes don't agree"))
+        else
+            chsAB[iAB] == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
+            dsAB[iAB] == reverse(sizes(C,iC)) || throw(ArgumentError("sizes don't agree"))
+        end
+    end
+    return (tuple([ifelse(b,1,-1) for b in maskB]...), tuple([ifelse(b,1,-1) for b in maskAB]...))
 end
 
 function contract!(α, A::DASTensor{TA,NA}, ::Type{Val{CA}},
@@ -292,18 +316,18 @@ function contract!(α, A::DASTensor{TA,NA}, ::Type{Val{CA}},
                       indCinoAB, ::Type{Val{M}}=Val{:native}) where
                       {TA,NA,TB,NB,TC,NC,CA,CB,M}
     #conditions
-    _errorscontract(A, cindA, B, cindB)
+    maskB, maskAB = _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
 
     oinAB = TT.vcat(oindA, .+(oindB, NA))
-    indCinAB = map(x -> oinAB[x], indCinoAB)
+    indCinAB = TT.getindices(oinAB, indCinoAB)
     secsA = groupby(x -> TT.getindices(x, cindA), keys(tensor(A)))
-    secsB = groupby(x -> TT.getindices(x, cindB), keys(tensor(B)))
+    secsB = groupby(x -> maskB .* TT.getindices(x, cindB), keys(tensor(B)))
     # collect sectors that contract with each other
     secsAB = intersect(keys(secsA), keys(secsB))
     passedset = Set()
     for sector in secsAB
         for secA in secsA[sector], secB in secsB[sector]
-            newsector = _getnewsector(secA, secB, oindA, oindB, indCinoAB)
+            newsector = maskAB .* _getnewsector(secA, maskB .* secB, oindA, oindB, indCinoAB)
             if haskey(tensor(C), newsector)
                 if !in(newsector, passedset) #firstpass
                     push!(passedset, newsector)
