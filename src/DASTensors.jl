@@ -180,25 +180,33 @@ Base.:(*)(α::Number, A::DASTensor) = apply(A, x -> α .* x)
 Base.conj!(A::DASTensor) = apply!(A, conj!)
 Base.conj(A::DASTensor) = apply(A, conj!)
 
-function _errorsadd(A, C, perm)
-    in_out(A) == in_out(C, perm) || throw(ArgumentError("Leg directions don't agree"))
-    charges(A) == charges(C, perm) || throw(ArgumentError("charges don't agree"))
-    sizes(A) == sizes(C, perm) || throw(ArgumentError("sizes don't agree"))
+function _errorsadd(A, C, perm::NTuple{N}) where N
+    _invert(a::UnitRange) = (-a.stop):(-a.start)
+    mask = in_out(A) .== in_out(C, perm)
+    for (m, iA, iC) in zip(mask, 1:N, perm)
+        if m
+            charges(A, iA) == charges(C, iC) || throw(ArgumentError("charges don't agree"))
+            sizes(A, iA) == sizes(C, iC) || throw(ArgumentError("sizes don't agree"))
+        else
+            charges(A, iA) == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
+            sizes(A, iA) == reverse(sizes(C, iC)) || throw(ArgumentError("sizes don't agree"))
+        end
+    end
+    return tuple([ifelse(b,1,-1) for b in mask]...)
 end
 
 function add!(α::Number, A::DASTensor{T,N}, conjA::Type{Val{CA}},
      β::Number, C::DASTensor{S,N}, indCinA) where {T,S,N,CA}
-    #conditions
     perm = TT.sortperm(indCinA)
-    _errorsadd(A, C, perm)
+    mask = _errorsadd(A, C, perm)
 
     for (sector, degeneracy) in tensor(A)
-        permsector = TT.permute(sector, perm)
+        permsector = TT.permute(mask .* sector, perm)
         if haskey(tensor(C), permsector)
-            add!( α, degeneracy, conjA, β, C[permsector], indCinA)
+            add!(α, degeneracy, conjA, β, C[permsector], indCinA)
         else
             C[permsector] = similar_from_indices(T, indCinA, degeneracy)
-            add!( α, degeneracy, conjA, 0, C[permsector], indCinA)
+            add!(α, degeneracy, conjA, 0, C[permsector], indCinA)
         end
     end
     return C
