@@ -1,5 +1,6 @@
 using TNTensors, Test
 using TensorOperations: @tensor, tensoradd, tensortrace, tensorcontract, scalar
+using Random: randperm
 const ntype = ComplexF64
 const u1chs = -1:1
 const u1ds = [2,1,2]
@@ -157,4 +158,46 @@ end
     u, s, vt = tensorsvd(az3)
     @tensor az32[1,2] := u[1,-1] * s[-1, -2] * vt[-2,2]
     @test az32 ≈ az3
+end
+
+@testset "in_out agnosticism" begin
+    for io in [(1,1),(1,-1),(-1,1),(-1,-1)]
+        a = rand(U1Tensor{ComplexF64,4}, (-1:1,-1:1,-1:1,-1:1), ([2,1,2],[2,1,2],[2,1,2],[2,1,2]), (1,1,-1,-1));
+        @tensor ref[] := a[1,2,1,2]
+        io = (1,-1)
+        b = fuselegs(a, ((1,2),(3,4)), io)[1]
+        @tensor c[] := b[1,1]
+        @test c ≈ ref
+    end
+
+    N = 6
+    a = rand(U1Tensor{ComplexF64,N}, tuple([-1:1 for i in 1:N]...), tuple([[2,1,2] for i in 1:N]...), tuple([1 for i in 1:N]...));
+    b = rand(U1Tensor{ComplexF64,N}, tuple([-1:1 for i in 1:N]...), tuple([[2,1,2] for i in 1:N]...), tuple([-1 for i in 1:N]...));
+
+    ref = tensorcontract(a,1:N,b,1:N,())
+    for i in rand(2:N-1,1)
+        for ioa in [(1,1),(1,-1),(-1,1),(-1,-1)], iob in [(1,1),(1,-1),(-1,1),(-1,-1)]
+            inds = randperm(N)
+            i1 = (inds[1:i]...,)
+            i2 = (inds[i+1:end]...,)
+            af = fuselegs(a,(i1,i2),ioa)[1]
+            bf = fuselegs(b,(i1,i2),iob)[1]
+            @test scalar(tensorcontract(af,1:2,bf,1:2,())) ≈ scalar(ref)
+        end
+    end
+
+    N = 3
+    a = rand(U1Tensor{ComplexF64,N}, tuple([-1:1 for i in 1:N]...), tuple([[2,1,2] for i in 1:N]...), tuple([1 for i in 1:N]...));
+    b = rand(U1Tensor{ComplexF64,N}, tuple([-1:1 for i in 1:N]...), tuple([[2,1,2] for i in 1:N]...), tuple([-1 for i in 1:N]...));
+
+    ref = tensorcontract(a,1:N,b,1:N,())
+    for _ in 1:10
+        for ioa in Iterators.product([(1,-1) for i in 1:N]...),
+            iob in Iterators.product([(1,-1) for i in 1:N]...)
+            inds = randperm(N)
+            af = fuselegs(a,inds,ioa)[1]
+            bf = fuselegs(b,inds,iob)[1]
+            @test scalar(tensorcontract(af,1:N,bf,1:N,())) ≈ scalar(ref)
+        end
+    end
 end

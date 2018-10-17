@@ -16,7 +16,7 @@ function Base.show(io::IO, A::TT) where {TT<:DASTensor}
     println(io)
     print(io, "in/out: ", in_out(A))
     println(io)
-    print(io, "Tensors", eltype(A.tensor))
+    print(io, "Tensors ", eltype(A.tensor))
 end
 
 #= Rand =#
@@ -327,7 +327,7 @@ function contract!(α, A::DASTensor{TA,NA}, ::Type{Val{CA}},
     passedset = Set()
     for sector in secsAB
         for secA in secsA[sector], secB in secsB[sector]
-            newsector = maskAB .* _getnewsector(secA, maskB .* secB, oindA, oindB, indCinoAB)
+            newsector = maskAB .* _getnewsector(secA, secB, oindA, oindB, indCinoAB)
             if haskey(tensor(C), newsector)
                 if !in(newsector, passedset) #firstpass
                     push!(passedset, newsector)
