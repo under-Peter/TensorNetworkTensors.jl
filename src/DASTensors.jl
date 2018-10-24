@@ -16,7 +16,7 @@ function Base.show(io::IO, A::TT) where {TT<:DASTensor}
     println(io)
     print(io, "in/out: ", in_out(A))
     println(io)
-    print(io, "Tensors ", eltype(A.tensor))
+    print(io, "Tensors ", eltype(A))
 end
 
 #= Rand =#
@@ -48,8 +48,8 @@ function Base.convert(::Type{DTensor{S}}, A::DASTensor{T,N}) where {S,T,N}
     cumdims = (prepend!(cumsum(d),0) for d in sizes(A))
     degenrange = [map((x, y) -> x+1:y, cd[1:end-1], cd[2:end]) for cd in cumdims]
     rangedict = Dict{NTuple{2,Int},UnitRange}()
-    for (i, charges) in enumerate(charges(A)), (j, charge) in enumerate(charges)
-        rangedict[(i, charge)] = degenrange[i][j]
+    for (i, chs) in enumerate(charges(A)), (j, ch) in enumerate(chs)
+        rangedict[(i, ch)] = degenrange[i][j]
     end
     array = zeros(S, map(last, cumdims)...)
     for (sector, degeneracy) in tensor(A)
@@ -60,7 +60,7 @@ function Base.convert(::Type{DTensor{S}}, A::DASTensor{T,N}) where {S,T,N}
 end
 
 todense(A::DASTensor{T,N}) where {T,N} = convert(DTensor{T},A)
-diag(A::DASTensor{T,2}) where T = reduce(vcat,(diag(degen) for degen in values(tensor(a))))
+diag(A::DASTensor{T,2}) where T = reduce(vcat, diag(degen) for degen in values(A))
 
 #getters
 @inline charges(A::DASTensor) = A.charges
@@ -78,6 +78,8 @@ diag(A::DASTensor{T,2}) where T = reduce(vcat,(diag(degen) for degen in values(t
 @inline tensor(A::DASTensor,i)  = A.tensor[i]
 @inline Base.getindex(A::DASTensor, i) = A.tensor[i]
 @inline Base.setindex!(A::DASTensor{T,N}, t, i::NTuple{N}) where {T,N} = (A.tensor[i] = t; A)
+@inline Base.values(A::DASTensor) = values(A.tensor)
+@inline Base.keys(A::DASTensor) = keys(A.tensor)
 
 #setters
 @inline setcharges!(A::DASTensor, charges) = (A.charges = charges; A)
@@ -164,7 +166,7 @@ function Base.copyto!(dest::TT, source::TT) where {TT <: DASTensor}
 end
 
 function apply!(A::DASTensor, op)
-    for degeneracy in values(tensor(A))
+    for degeneracy in values(A)
         degeneracy .= op(degeneracy)
     end
     return A
@@ -186,10 +188,15 @@ function _errorsadd(A, C, perm::NTuple{N}) where N
     for (m, iA, iC) in zip(mask, 1:N, perm)
         if m
             charges(A, iA) == charges(C, iC) || throw(ArgumentError("charges don't agree"))
-            sizes(A, iA) == sizes(C, iC) || throw(ArgumentError("sizes don't agree"))
+            sizes(A, iA) == sizes(C, iC) || throw(DimensionMismatch())
         else
-            charges(A, iA) == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
-            sizes(A, iA) == reverse(sizes(C, iC)) || throw(ArgumentError("sizes don't agree"))
+            if A isa ZNTensor
+                charges(A, iA) == charges(C, iC) || throw(ArgumentError("charges don't agree"))
+            else
+                charges(A, iA) == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
+            end
+
+            sizes(A, iA) == reverse(sizes(C, iC)) || throw(DimensionMismatch())
         end
     end
     return tuple([ifelse(b,1,-1) for b in mask]...)
@@ -197,11 +204,16 @@ end
 
 function add!(α::Number, A::DASTensor{T,N}, conjA::Type{Val{CA}},
      β::Number, C::DASTensor{S,N}, indCinA) where {T,S,N,CA}
+    _znhelper(A::ZNTensor{T,N,NN}) where NN = NN
     perm = TT.sortperm(indCinA)
     mask = _errorsadd(A, C, perm)
 
     for (sector, degeneracy) in tensor(A)
-        permsector = TT.permute(mask .* sector, perm)
+        if A isa ZNTensor
+            permsector = mod.(TT.permute(mask .* sector, perm), _znhelper(A))
+        else
+            permsector = TT.permute(mask .* sector, perm)
+        end
         if haskey(tensor(C), permsector)
             add!(α, degeneracy, conjA, β, C[permsector], indCinA)
         else
@@ -221,10 +233,15 @@ function _errorstrace(A::DASTensor{T,N}, cindA1::NTuple{M1,Int}, cindA2::NTuple{
     for (m, iA1, iA2) in zip(maskA, cindA1, cindA2) #trace in A
         if m
             charges(A, iA1) == charges(A, iA2) || throw(ArgumentError("charges don't agree"))
-            sizes(A, iA1) == sizes(A, iA2) || throw(ArgumentError("sizes don't agree"))
+            sizes(A, iA1) == sizes(A, iA2) || throw(DimensionMismatch())
         else
-            charges(A, iA1) == _invert(charges(A, iA2)) || throw(ArgumentError("charges don't agree"))
-            sizes(A, iA1) == reverse(sizes(A, iA2)) || throw(ArgumentError("sizes don't agree"))
+            if A isa ZNTensor
+                charges(A, iA1) == charges(A, iA2) || throw(ArgumentError("charges don't agree"))
+            else
+                charges(A, iA1) == _invert(charges(A, iA2)) || throw(ArgumentError("charges don't agree"))
+            end
+
+            sizes(A, iA1) == reverse(sizes(A, iA2)) || throw(DimensionMismatch())
         end
     end
     indsA = TT.sort(indCinA)
@@ -233,10 +250,15 @@ function _errorstrace(A::DASTensor{T,N}, cindA1::NTuple{M1,Int}, cindA2::NTuple{
     for (m, iA, iC) in zip(maskC, indsA, perm) #trace in A
         if m
             charges(A, iA) == charges(C, iC) || throw(ArgumentError("charges don't agree"))
-            sizes(A, iA) == sizes(C, iC) || throw(ArgumentError("sizes don't agree"))
+            sizes(A, iA) == sizes(C, iC) || throw(DimensionMismatch())
         else
-            charges(A, iA) == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
-            sizes(A, iA) == reverse(sizes(C, iC)) || throw(ArgumentError("sizes don't agree"))
+            if A isa ZNTensor
+                charges(A, iA) == charges(C, iC) || throw(ArgumentError("charges don't agree"))
+            else
+                charges(A, iA) == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
+            end
+
+            sizes(A, iA) == reverse(sizes(C, iC)) || throw(DimensionMismatch())
         end
     end
     return (tuple([ifelse(b,1,-1) for b in maskA]...), tuple([ifelse(b,1,-1) for b in maskC]...))
@@ -245,12 +267,16 @@ end
 function trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}}, β, C::DASTensor{S,M},
                 indCinA, cindA1, cindA2) where {T,N,S,M,CA}
     #conditions
+    _znhelper(A::ZNTensor{T,N,NN}) where NN = NN
     maskA, maskC = _errorstrace(A, cindA1, cindA2, C, indCinA)
 
     perm = TT.sortperm(indCinA)
     sectors = filter(x -> isequal(maskA .* TT.getindices(x, cindA1), TT.getindices(x, cindA2)),
-                        collect(keys(tensor(A))))
+                        collect(keys(A)))
     newsectors = map(x -> maskC .* TT.permute(TT.deleteat(x, TT.vcat(cindA1, cindA2)),perm), sectors)
+    if A isa ZNTensor
+        newsectors = [mod.(ns,_znhelper(A)) for ns in newsectors]
+    end
     passedset = Set{}()
     sizehint!(tensor(C), length(tensor(C)) + length(newsectors))
     for (sector, newsector) in zip(sectors, newsectors)
@@ -288,23 +314,31 @@ function _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
     for (m, iA, iB) in zip(maskB, cindA, cindB)
         if m
             charges(A,iA) == charges(B,iB) || throw(ArgumentError("charges don't agree"))
-            sizes(A,iA) == sizes(B,iB) || throw(ArgumentError("sizes don't agree"))
+            sizes(A,iA) == sizes(B,iB) || throw(DimensionMismatch())
         else
-            charges(A,iA) == _invert(charges(B,iB)) || throw(ArgumentError("charges don't agree"))
-            sizes(A,iA) == reverse(sizes(B,iB)) || throw(ArgumentError("sizes don't agree"))
+            if A isa ZNTensor
+                charges(A,iA) == charges(B,iB) || throw(ArgumentError("charges don't agree"))
+            else
+                charges(A,iA) == _invert(charges(B,iB)) || throw(ArgumentError("charges don't agree"))
+            end
+            sizes(A,iA) == reverse(sizes(B,iB)) || throw(DimensionMismatch())
         end
     end
-    ioAB  = TT.vcat(in_out(A), in_out(B))
-    chsAB = TT.vcat(charges(A), charges(B))
-    dsAB  = TT.vcat(sizes(A), sizes(B))
+    ioAB  = TT.vcat(in_out(A, oindA), in_out(B, oindB))
+    chsAB = TT.vcat(charges(A, oindA), charges(B, oindB))
+    dsAB  = TT.vcat(sizes(A, oindA), sizes(B, oindB))
     maskAB = TT.getindices(ioAB,indCinoAB) .== in_out(C)
     for (m, iAB, iC) in zip(maskB, indCinoAB, 1:length(indCinoAB))
         if m
             chsAB[iAB] == charges(C, iC)|| throw(ArgumentError("charges don't agree"))
-            dsAB[iAB] == sizes(C,iC) || throw(ArgumentError("sizes don't agree"))
+            dsAB[iAB] == sizes(C,iC) || throw(DimensionMismatch())
         else
-            chsAB[iAB] == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
-            dsAB[iAB] == reverse(sizes(C,iC)) || throw(ArgumentError("sizes don't agree"))
+            if A isa ZNTensor
+                chsAB[iAB] == charges(C, iC) || throw(ArgumentError("charges don't agree"))
+            else
+                chsAB[iAB] == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
+            end
+            dsAB[iAB] == reverse(sizes(C,iC)) || throw(DimensionMismatch())
         end
     end
     return (tuple([ifelse(b,1,-1) for b in maskB]...), tuple([ifelse(b,1,-1) for b in maskAB]...))
@@ -316,18 +350,28 @@ function contract!(α, A::DASTensor{TA,NA}, ::Type{Val{CA}},
                       indCinoAB, ::Type{Val{M}}=Val{:native}) where
                       {TA,NA,TB,NB,TC,NC,CA,CB,M}
     #conditions
+    _znhelper(A::ZNTensor{TA,NA,M}) where M = M
     maskB, maskAB = _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
 
     oinAB = TT.vcat(oindA, .+(oindB, NA))
     indCinAB = TT.getindices(oinAB, indCinoAB)
-    secsA = groupby(x -> TT.getindices(x, cindA), keys(tensor(A)))
-    secsB = groupby(x -> maskB .* TT.getindices(x, cindB), keys(tensor(B)))
+    secsA = groupby(x -> TT.getindices(x, cindA), keys(A))
+    if A isa ZNTensor
+        secsB = groupby(x -> mod.(maskB .* TT.getindices(x, cindB), _znhelper(A)), keys(B))
+    else
+        secsB = groupby(x -> maskB .* TT.getindices(x, cindB), keys(B))
+    end
     # collect sectors that contract with each other
     secsAB = intersect(keys(secsA), keys(secsB))
     passedset = Set()
     for sector in secsAB
         for secA in secsA[sector], secB in secsB[sector]
-            newsector = maskAB .* _getnewsector(secA, secB, oindA, oindB, indCinoAB)
+            if A isa ZNTensor
+                newsector = mod.(maskAB .* _getnewsector(secA, secB, oindA, oindB, indCinoAB), _znhelper(A))
+            else
+                newsector = maskAB .* _getnewsector(secA, secB, oindA, oindB, indCinoAB)
+            end
+
             if haskey(tensor(C), newsector)
                 if !in(newsector, passedset) #firstpass
                     push!(passedset, newsector)
@@ -414,6 +458,7 @@ function fusefields(A::T, indexes, lds, ddicts) where {T<:DASTensor}
 end
 
 
+fuselegs(A::T, indexes::NTuple{M}) where {M,T<:DASTensor} = fuselegs(A, indexes, ntuple(i -> 1,M))
 function fuselegs(A::T, indexes, lds::NTuple{M,Int}) where {T<:DASTensor{S,N}, M} where {S,N}
     _pick(sector, i::Int) = sector[i]
     _pick(sector, i::NTuple) = TT.getindices(sector, i)
