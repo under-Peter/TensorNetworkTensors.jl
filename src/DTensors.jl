@@ -4,7 +4,7 @@ struct DTensor{T,N} <: AbstractTensor{T,N}
 end
 
 DTensor(T::Type = ComplexF64) = DTensor{T,0}(Array{T,0}(undef))
-DTensor{T,N}(ds::NTuple{N,Int}) where {T,N} = DTensor{T,N}(Array{T,N}(undef,ds...))
+DTensor{T,N}(ds::NTuple{N,Int}) where {T,N} = DTensor{T,N}(zeros(T,ds...))
 tnttype(::Type{<:DTensor}) = DTensor
 
 function Base.show(io::IO, A::DTensor)
@@ -50,6 +50,7 @@ similar_from_indices(T::Type, p1::Tuple, p2, A::DTensor, CA::Type{<:Val}) =
 
 Base.similar(A::DTensor{T,N}, ::Type{S}) where {T,N,S} = DTensor(Base.similar(A.array, S))
 Base.similar(A::DTensor{T,N}) where {T,N,S} = DTensor(Base.similar(A.array, T))
+Base.copy(A::DTensor) = DTensor(copy(A.array))
 Base.copy!(dest::DTensor, source::DTensor) = DTensor(copy!(dest.array, source.array))
 Base.copyto!(dest::DTensor, source::DTensor) = Base.copyto!(dest.array, source.array)
 Base.eltype(A::DTensor{T,N}) where {T,N} = T
