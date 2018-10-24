@@ -4,6 +4,8 @@ struct DTensor{T,N} <: AbstractTensor{T,N}
 end
 
 DTensor(T::Type = ComplexF64) = DTensor{T,0}(Array{T,0}(undef))
+DTensor{T,N}(ds::NTuple{N,Int}) where {T,N} = DTensor{T,N}(Array{T,N}(undef,ds...))
+tnttype(::Type{<:DTensor}) = DTensor
 
 function Base.show(io::IO, A::DTensor)
     print(io, typeof(A))
@@ -17,7 +19,8 @@ Base.ndims(A::DTensor) = ndims(A.array)
 scalar(A::DTensor)  = scalar(A.array)
 Base.getindex(A::DTensor, i...) = getindex(A.array, i...)
 Base.setindex!(A::DTensor, x, i...) = setindex!(A.array, x, i...)
-Base.size(A::DTensor, i::Vararg{Integer,N}) where N = size(A.array, i...)
+Base.size(A) = size(A.array)
+Base.size(A::DTensor, i::Int) where N = size(A.array,i)
 Base.isapprox(A::DTensor, B::DTensor) = (A.array ≈ B.array)
 Base.isapprox(A, B::DTensor) = false
 Base.isapprox(A::DTensor, B) = false
@@ -76,11 +79,12 @@ contract!(α, A::DTensor, CA::Type{<:Val}, B::DTensor, CB::Type{<:Val}, β,
     contract!(α, A, CA, B, CB, β, C, oindA, cindA, oindB, cindB, (p1..., p2...), method)
 
 #= RESHAPING W/O CONTRACTION=#
-function fuselegs(A::DTensor, indexes::NTuple...)
-    s = size(A)
+function fuselegs(A::DTensor, indexes::NTuple)
+    _pick(i::Int) = size(A,i)
+    _pick(i::NTuple) = tuple((size(A,j) for j in i)...)
     perm = TT.vcat(indexes...)
-    dims = map(i -> prod((s[j] for j in i)), indexes)
-    inverter = tuple((TT.getindices(s,i) for i in indexes)...)
+    dims = map(prod ∘ _pick, indexes)
+    inverter = tuple(map(_pick, indexes)...)
     return  (DTensor(reshape(permutedims(A.array, perm), dims...)), inverter)
 end
 
@@ -89,7 +93,7 @@ function splitlegs(A::DTensor{T}, indexes::NTuple{N,Union{Int,NTuple{3,Int}}}, i
 	perm  = TT.sortperm(tindexes)
 	iperm = TT.invperm(perm)
 	indexes = TT.getindices(indexes, perm)
-    _pick(i::Tuple{Int}) = size(A, i)
+    _pick(i::Int) = size(A, i)
     _pick((l,m,n)) = inverter[m][n]
     dims = [_pick(i) for i in indexes]
 	return DTensor{T,N}(permutedims(reshape(A.array, dims...), iperm))
