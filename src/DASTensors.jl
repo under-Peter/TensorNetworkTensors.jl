@@ -184,6 +184,7 @@ Base.conj(A::DASTensor) = apply(A, conj!)
 
 function _errorsadd(A, C, perm::NTuple{N}) where N
     _invert(a::UnitRange) = (-a.stop):(-a.start)
+    _znhelper(A::ZNTensor{T,N,NN}) where {T,N,NN} = NN
     mask = in_out(A) .== in_out(C, perm)
     for (m, iA, iC) in zip(mask, 1:N, perm)
         if m
@@ -199,21 +200,21 @@ function _errorsadd(A, C, perm::NTuple{N}) where N
             sizes(A, iA) == reverse(sizes(C, iC)) || throw(DimensionMismatch())
         end
     end
-    return tuple([ifelse(b,1,-1) for b in mask]...)
+    maskarr = [ifelse(b,1,-1) for b in mask]
+    if A isa ZNTensor
+        return x -> tuple(mod.(maskarr .* x, _znhelper(A))...)
+    else
+        return x -> tuple((maskarr .* x)...)
+    end
 end
 
 function add!(α::Number, A::DASTensor{T,N}, conjA::Type{Val{CA}},
      β::Number, C::DASTensor{S,N}, indCinA) where {T,S,N,CA}
-    _znhelper(A::ZNTensor{T,N,NN}) where NN = NN
     perm = TT.sortperm(indCinA)
-    mask = _errorsadd(A, C, perm)
+    maskfun = _errorsadd(A, C, perm)
 
     for (sector, degeneracy) in tensor(A)
-        if A isa ZNTensor
-            permsector = mod.(TT.permute(mask .* sector, perm), _znhelper(A))
-        else
-            permsector = TT.permute(mask .* sector, perm)
-        end
+        permsector = TT.permute(maskfun(sector), perm)
         if haskey(tensor(C), permsector)
             add!(α, degeneracy, conjA, β, C[permsector], indCinA)
         else
@@ -228,6 +229,7 @@ add!(α, A::DASTensor, CA, β, C::DASTensor, p1, p2) = add!(α, A, CA, β, C, (p
 
 function _errorstrace(A::DASTensor{T,N}, cindA1::NTuple{M1,Int}, cindA2::NTuple{M2,Int}, C, indCinA) where {M1,M2,T,N}
     _invert(a::UnitRange) = (-a.stop):(-a.start)
+    _znhelper(A::ZNTensor{T,N,NN}) where {NN} = NN
     M1 == M2 || throw(ArgumentError("indices to contract don't pair up") )
     maskA = in_out(A, cindA1) .== -1 .* in_out(A, cindA2)
     for (m, iA1, iA2) in zip(maskA, cindA1, cindA2) #trace in A
@@ -261,22 +263,29 @@ function _errorstrace(A::DASTensor{T,N}, cindA1::NTuple{M1,Int}, cindA2::NTuple{
             sizes(A, iA) == reverse(sizes(C, iC)) || throw(DimensionMismatch())
         end
     end
-    return (tuple([ifelse(b,1,-1) for b in maskA]...), tuple([ifelse(b,1,-1) for b in maskC]...))
+    maskAarr = tuple([ifelse(b,1,-1) for b in maskA]...)
+    maskCarr = tuple([ifelse(b,1,-1) for b in maskC]...)
+    if A isa ZNTensor
+        maskAfun = x -> tuple((mod.(maskAarr .* x, _znhelper(A)))...)
+        maskCfun = x -> tuple((mod.(maskCarr .* x, _znhelper(A)))...)
+    else
+        maskAfun = x -> tuple((maskAarr .* x)...)
+        maskCfun = x -> tuple((maskCarr .* x)...)
+    end
+    return (maskAfun, maskCfun)
 end
 
 function trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}}, β, C::DASTensor{S,M},
                 indCinA, cindA1, cindA2) where {T,N,S,M,CA}
     #conditions
-    _znhelper(A::ZNTensor{T,N,NN}) where NN = NN
-    maskA, maskC = _errorstrace(A, cindA1, cindA2, C, indCinA)
+    maskAfun, maskCfun = _errorstrace(A, cindA1, cindA2, C, indCinA)
 
     perm = TT.sortperm(indCinA)
-    sectors = filter(x -> isequal(maskA .* TT.getindices(x, cindA1), TT.getindices(x, cindA2)),
+    sectors = filter(x -> isequal(maskAfun(TT.getindices(x, cindA1)),
+                                           TT.getindices(x, cindA2)),
                         collect(keys(A)))
-    newsectors = map(x -> maskC .* TT.permute(TT.deleteat(x, TT.vcat(cindA1, cindA2)),perm), sectors)
-    if A isa ZNTensor
-        newsectors = [mod.(ns,_znhelper(A)) for ns in newsectors]
-    end
+    newsectors = map(x -> maskCfun(TT.permute(TT.deleteat(x, TT.vcat(cindA1, cindA2)),perm)),
+                     sectors)
     passedset = Set{}()
     sizehint!(tensor(C), length(tensor(C)) + length(newsectors))
     for (sector, newsector) in zip(sectors, newsectors)
@@ -310,6 +319,7 @@ function _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
     length(cindA) == length(cindB) || throw(ArgumentError("indices to contract don't pair up"))
     length(oindA) + length(oindB) == length(indCinoAB) || throw(ArgumentError("indices to contract don't pair up"))
     _invert(a::UnitRange) = (-a.stop):(-a.start)
+    _znhelper(A::ZNTensor{TA,NA,M}) where {TA,NA,M} = M
     maskB = in_out(A,cindA) .== -1 .* in_out(B,cindB)
     for (m, iA, iB) in zip(maskB, cindA, cindB)
         if m
@@ -341,7 +351,16 @@ function _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
             dsAB[iAB] == reverse(sizes(C,iC)) || throw(DimensionMismatch())
         end
     end
-    return (tuple([ifelse(b,1,-1) for b in maskB]...), tuple([ifelse(b,1,-1) for b in maskAB]...))
+    maskBarr = tuple([ifelse(b,1,-1) for b in maskB]...)
+    maskABarr = tuple([ifelse(b,1,-1) for b in maskAB]...)
+    if A isa ZNTensor
+        maskBfun = x -> tuple((mod.(maskBarr .* x, _znhelper(A)))...)
+        maskABfun = x -> tuple((mod.(maskABarr .* x, _znhelper(A)))...)
+    else
+        maskBfun = x -> tuple((maskBarr .* x)...)
+        maskABfun = x -> tuple((maskABarr .* x)...)
+    end
+    return (maskBfun, maskABfun)
 end
 
 function contract!(α, A::DASTensor{TA,NA}, ::Type{Val{CA}},
@@ -350,28 +369,18 @@ function contract!(α, A::DASTensor{TA,NA}, ::Type{Val{CA}},
                       indCinoAB, ::Type{Val{M}}=Val{:native}) where
                       {TA,NA,TB,NB,TC,NC,CA,CB,M}
     #conditions
-    _znhelper(A::ZNTensor{TA,NA,M}) where M = M
-    maskB, maskAB = _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
+    maskBfun, maskABfun = _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
 
     oinAB = TT.vcat(oindA, .+(oindB, NA))
     indCinAB = TT.getindices(oinAB, indCinoAB)
     secsA = groupby(x -> TT.getindices(x, cindA), keys(A))
-    if A isa ZNTensor
-        secsB = groupby(x -> mod.(maskB .* TT.getindices(x, cindB), _znhelper(A)), keys(B))
-    else
-        secsB = groupby(x -> maskB .* TT.getindices(x, cindB), keys(B))
-    end
+    secsB = groupby(x -> maskBfun(TT.getindices(x, cindB)), keys(B))
     # collect sectors that contract with each other
     secsAB = intersect(keys(secsA), keys(secsB))
     passedset = Set()
     for sector in secsAB
         for secA in secsA[sector], secB in secsB[sector]
-            if A isa ZNTensor
-                newsector = mod.(maskAB .* _getnewsector(secA, secB, oindA, oindB, indCinoAB), _znhelper(A))
-            else
-                newsector = maskAB .* _getnewsector(secA, secB, oindA, oindB, indCinoAB)
-            end
-
+            newsector = maskABfun(_getnewsector(secA, secB, oindA, oindB, indCinoAB))
             if haskey(tensor(C), newsector)
                 if !in(newsector, passedset) #firstpass
                     push!(passedset, newsector)
