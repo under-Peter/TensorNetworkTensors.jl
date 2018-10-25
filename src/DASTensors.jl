@@ -60,7 +60,10 @@ function Base.convert(::Type{DTensor{S}}, A::DASTensor{T,N}) where {S,T,N}
 end
 
 todense(A::DASTensor{T,N}) where {T,N} = convert(DTensor{T},A)
-diag(A::DASTensor{T,2}) where T = reduce(vcat, diag(degen) for degen in values(A))
+function diag(A::DASTensor{T,2}) where T
+    ks = sort(collect(keys(A)))
+    return reduce(vcat, diag(A[k]) for k in ks)
+end
 
 #getters
 @inline charges(A::DASTensor) = A.charges
