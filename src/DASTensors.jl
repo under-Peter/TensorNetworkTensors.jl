@@ -65,6 +65,12 @@ function diag(A::DASTensor{T,2}) where T
     return reduce(vcat, diag(A[k]) for k in ks)
 end
 
+function scalar(A::DASTensor{T,0}) where T
+    isempty(A.tensor) && return 0
+    return scalar(first(values(A.tensor)))
+end
+
+
 #getters
 @inline charges(A::DASTensor) = A.charges
 @inline sizes(A::DASTensor)   = A.sizes
@@ -114,23 +120,16 @@ end
 
 Base.:(≈)(A::DASTensor, B::DASTensor) = false
 
+_key_helpers(a,b) = (intersect(a,b), setdiff(a,b), setdiff(b,a))
 function _tensor_equ(A::Dict{V,K}, B::Dict{V,K}) where {V,K}
-    kA = keys(A)
-    kB = keys(B)
-    kAB = intersect(kA, kB)
-    kAonly = setdiff(kA, kB)
-    kBonly = setdiff(kB, kA)
+    kAB, kAonly, kBonly = _key_helpers(keys(A),keys(B))
     return  all([A[k] == B[k] for k in kAB]) &&
             all([iszero(A[k]) for k in kAonly]) &&
             all([iszero(B[k]) for k in kBonly])
 end
 
 function _tensor_approx(A::Dict{V,K}, B::Dict{V,K}) where {V,K}
-    kA = keys(A)
-    kB = keys(B)
-    kAB = intersect(kA, kB)
-    kAonly = setdiff(kA, kB)
-    kBonly = setdiff(kB, kA)
+    kAB, kAonly, kBonly = _key_helpers(keys(A),keys(B))
     return all([A[k] ≈ B[k] for k in kAB]) &&
         all([isapprox(A[k], zero(A[k]), atol = 10^-14.) for k in kAonly]) &&
         all([isapprox(B[k], zero(B[k]), atol = 10^-14.) for k in kBonly])

@@ -29,8 +29,6 @@ end
 
 
 #= Helper Functions =#
-scalar(A::U1Tensor{T,0}) where T = first(first(values(A.tensor)))
-
 filterfun(::Type{<:U1Tensor})  = (x, y) -> iszero(sum(map(*, x, y)))
 
 isinvariant(A::U1Tensor{T,N}) where {T,N} =

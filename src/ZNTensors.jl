@@ -42,8 +42,6 @@ function constructnew(::Type{ZNTensor{S,L,M}}, newfields, newtensor::Dict{NTuple
 end
 
 #= Helper Functions =#
-scalar(A::ZNTensor{T,0,M}) where {T,M} = first(first(values(A.tensor)))
-
 filterfun(::Type{<:ZNTensor{T,N,M}}) where {T,N,M}  = (x, y) -> iszero(mod(sum(x .* y), M))
 
 isinvariant(A::ZNTensor{T,N,M}) where {T,N,M} =
