@@ -19,7 +19,9 @@ include("DTensors.jl")
 export charges, sizes, in_out, tensor, chargesize
 export diag, apply!
 export setcharges!, setsizes!, setin_out!, settensor!
-export ZNTensor, U1Tensor, DASTensor, todense
+export DASTensor, todense
+export ZNTensor, ZNCharge, ZNCharges, ZNSector
+export U1Tensor, U1Charge, U1Charges, U1Sector
 export svdcutfun_default, svdcutfun_discardzero , svdcutfun_maxχ,
     svdcutfun_maxcumerror, svdcutfun_maxerror
 include("DASTensors.jl")

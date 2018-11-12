@@ -1,9 +1,58 @@
+#= =#
+struct U1Charges <: DASCharges
+    v::StepRange{Int,Int}
+end
+
+length(a::U1Charges) = length(a.v)
+
+function ⊕(a::U1Charges, b::U1Charges)
+    loa, hia = extrema(a.v)
+    lob, hib = extrema(b.v)
+    step = min(a.v.step, b.v.step)
+    return U1Charges((loa + lob):step:(hia + hib))
+end
+-(a::U1Charges) = U1Charges(a.v.stop:(-a.v.step):a.v.start)
+
+struct U1Charge <: DASCharge
+    ch::Int
+end
+⊕(a::U1Charge, b::U1Charge) = U1Charge(a.ch + b.ch)
+
+chargeindex(ch::U1Charge, chs::U1Charges) = div(ch.ch - chs.v.start, chs.v.step)+1
+
+getindex(s::U1Charges, i) = U1Charge(s.v[i])
+struct U1Sector{L} <: DASSector{L}
+    chs::NTuple{L, U1Charge}
+    U1Sector(k::NTuple{L,Int}) where L =
+        new{L}(ntuple(i -> U1Charge(k[i]), L))
+    U1Sector{L}(k::NTuple{L,U1Charge}) where L =
+        new{L}(k)
+end
+
+getindex(s::U1Sector{N},i::NTuple{M}) where {N,M} = U1Sector{M}(TT.getindices(s.chs,i))
+vcat(s1::U1Sector{N1}, s2::U1Sector{N2}) where {N1,N2} =
+    U1Sector{N1 + N2}(TT.vcat(s1.chs, s2.chs))
+deleteat(s1::U1Sector{M}, i::NTuple{L}) where {L,M} = U1Sector{M-L}(TT.deleteat(s1.chs,i))
+
+allsectors(chs::NTuple{N,U1Charges}) where {N} =
+    (U1Sector(s) for s in Iterators.product(ntuple(i -> chs[i].v,N)...))
+
 #= Struct =#
-mutable struct U1Tensor{T,N} <: DASTensor{T,N}
-    charges::NTuple{N,UnitRange{Int}}
-    sizes::NTuple{N,Vector{Int}}
-    in_out::NTuple{N,Int}
-    tensor::Dict{NTuple{N,Int}, Array{T,N}}
+mutable struct U1Tensor{T,L} <: DASTensor{T,L}
+    charges::NTuple{L,U1Charges}
+    sizes::NTuple{L,Vector{Int}}
+    in_out::InOut{L}
+    tensor::Dict{U1Sector{L}, Array{T,L}}
+    function U1Tensor{T,L}(charges::NTuple{L}, sizes, in_out::NTuple{L}, tensor) where {T,L}
+        new{T,L}(
+            ntuple(i -> U1Charges(charges[i]),L),
+            sizes,
+            InOut(in_out),
+            Dict(U1Sector{L}(k) => v for (k,v) in tensor))
+    end
+    function U1Tensor{T,L}(charges::NTuple{L}, sizes, in_out::InOut{L}, tensor) where {T,L}
+        new{T,L}( charges, sizes, in_out, tensor)
+    end
 end
 
 
@@ -16,7 +65,7 @@ U1Tensor{T,N}(charges, dims, in_out) where {T,N} =
     U1Tensor{T,N}(charges, dims, in_out, Dict())
 
 U1Tensor(charges::NTuple{N}, dims, in_out, T = ComplexF64) where N =
-    U1Tensor{T,N}(charges, dims, in_out)
+    U1Tensor{T,N}(charges, dims, in_out, Dict())
 
 U1Tensor(charges, dims, in_out, tensors::Dict{NTuple{N,Int}, Array{T,N}}) where {T,N} =
     U1Tensor{T,N}(charges, dims, in_out, tensors)
@@ -26,33 +75,6 @@ U1Tensor(T::Type = ComplexF64) = U1Tensor{T,0}((), (), (), Dict())
 function constructnew(::Type{<:U1Tensor}, newfields, newtensor::Dict{NTuple{M,Int},Array{T,M}}) where {M,T}
     return U1Tensor{T,M}(newfields...,newtensor)
 end
-
-
-#= Helper Functions =#
-scalar(A::U1Tensor{T,0}) where T = first(first(values(A.tensor)))
-
-filterfun(::Type{<:U1Tensor})  = (x, y) -> iszero(sum(map(*, x, y)))
-
-isinvariant(A::U1Tensor{T,N}) where {T,N} =
-    all(iszero ∘ sum, map(*,in_out(A),k) for k in keys(tensor(A)))
-
-charge(A::U1Tensor) = -sum(map(*,in_out(A),first(keys(tensor(A)))))
-
-function fusecharge(::Type{<:U1Tensor}, oldcharges::NTuple{N}, io::NTuple{N}, out) where N
-    charges = map((x, y) -> x .* y , io, oldcharges)
-    lower, upper = mapreduce(extrema, (x,y) -> x .+ y, charges)
-    out == 1 && return lower:upper
-    return (-upper):(-lower)
-end
-
-function fusecharge(::Type{<:U1Tensor}, oldcharges::UnitRange, io::Int, out)
-    lower, upper = extrema(oldcharges)
-    out == io && return lower:upper
-    return (-upper):(-lower)
-end
-
-fusecharges(::Type{<:U1Tensor}, in_out) = x -> sum(x .* in_out)
-fusecharges(::Type{<:U1Tensor}, in_out, out) = x -> out * sum(x .* in_out)
 
 
 #= Copy and Similarity Functions =#
@@ -86,10 +108,9 @@ function similar_from_indices(T::Type, poA, poB, p1, p2,
                 TT.getindices(CA == :N ? sizes(A) : reverse.(sizes(A)), poA),
                 TT.getindices(CB == :N ? sizes(B) : reverse.(sizes(B)), poB)),
                 p12)
-    in_outsC = TT.getindices(TT.vcat(
-                TT.getindices(CA == :N ? in_out(A) : -1 .* in_out(A), poA),
-                TT.getindices(CB == :N ? in_out(B) : -1 .* in_out(B), poB)),
-                p12)
+    in_outsC = vcat(
+        ifelse(CA == :N, in_out(A), - in_out(A))[poA],
+        ifelse(CB == :N, in_out(B), - in_out(B))[poB])[p12]
     return U1Tensor{T, length(p12)}( chargesC, sizesC, in_outsC)
 end
 

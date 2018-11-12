@@ -1,62 +1,93 @@
+#= Charges, Charge and Sectors =#
+struct ZNCharges{N} <: DASCharges end
+⊕(::ZNCharges{N}, ::ZNCharges{N}) where N = ZNCharges{N}()
+-(::ZNCharges{N}) where N = ZNCharges{N}()
+length(::ZNCharges{N}) where N = N
+
+struct ZNCharge{N} <: DASCharge
+    ch::Int
+    ZNCharge{N}(a) where {N} = new(mod(a,N))
+end
+⊕(a::ZNCharge{N}, b::ZNCharge{N}) where {N} = ZNCharge{N}(a.ch + b.ch)
+
+chargeindex(ch::ZNCharge{N}, chs::ZNCharges{N}) where N = (ch.ch + 1)
+
+getindex(s::ZNCharges{N}, i) where N = ZNCharge{N}((0:(N-1))[i])
+
+struct ZNSector{L,N} <: DASSector{L}
+    chs::NTuple{L, ZNCharge{N}}
+    ZNSector{0,N}(::Tuple{}) where {N} = new(())
+    ZNSector{L,N}(k::NTuple{L,Int}) where {L,N} =
+        new(ntuple(i -> ZNCharge{N}(k[i]),L))
+    ZNSector{L,N}(k::NTuple{L,ZNCharge}) where {L,N} =
+        new(k)
+end
+
+ZNSector{N}(t::NTuple{L,Int}) where {N,L} =
+    ZNSector{N,L}(ntuple(i -> ZNCharge{N}(t[i]),L))
+getindex(s::ZNSector{L,N}, i::NTuple{M}) where {L,N,M} =
+    ZNSector{M,N}(TT.getindices(s.chs,i))
+vcat(s1::ZNSector{L1,N}, s2::ZNSector{L2,N}) where {N,L1,L2} =
+    ZNSector{L1 + L2,N}(TT.vcat(s1.chs, s2.chs))
+deleteat(s1::ZNSector{L,N}, i::NTuple{M}) where {L,N,M} =
+    ZNSector{L-M,N}(TT.deleteat(s1.chs,i))
+
+allsectors(::NTuple{L,ZNCharges{N}}) where {L,N} =
+    (ZNSector{L,N}(s) for s in Iterators.product([0:(N-1) for ch in 1:L]...))
+
 #= Struct =#
-mutable struct ZNTensor{T,N,M} <: DASTensor{T,N}
-    charges::NTuple{N,UnitRange{Int}}
-    sizes::NTuple{N,Vector{Int}}
-    in_out::NTuple{N,Int}
-    tensor::Dict{NTuple{N,Int}, Array{T,N}}
-    function ZNTensor{T,N,M}(charges, sizes, in_out, tensor) where {T,N,M}
-        all(in([-1,1]), in_out) || throw(ArgumentError("in/outs needs to be ∈ [-1,1]"))
-        all(map(==, length.(charges), length.(sizes))) ||
-            throw(ArgumentError("charges need to be same length as sizes"))
-        all(map(isequal(0:(M-1)),charges)) ||
-            throw(ArgumentError("charges need to be 0:$(M-1) for Z$M"))
-        new{T,N,M}(charges, sizes, in_out, tensor)
+mutable struct ZNTensor{T,L,N} <: DASTensor{T,L}
+    charges::NTuple{L,ZNCharges{N}}
+    sizes::NTuple{L,Vector{Int}}
+    in_out::InOut{L}
+    tensor::Dict{ZNSector{L,N}, Array{T,L}}
+    function ZNTensor{T,L,N}(charges, sizes, in_out::NTuple{L}, tensor) where {T,L,N}
+        new{T,L,N}(
+            ntuple(i -> ZNCharges{N}(),L),
+            sizes,
+            InOut(in_out),
+            Dict(ZNSector{L,N}(k) => v for (k,v) in tensor))
+    end
+    function ZNTensor{T,L,N}(charges, sizes, in_out::InOut{L}, tensor) where {T,L,N}
+        new{T,L,N}(
+            charges,
+            sizes,
+            in_out,
+            tensor)
     end
 end
 
 
 #= Print =#
-printname(::Type{ZNTensor{T,N,M}}) where {T,N,M} = "Z$M-symmetric Tensor"
+printname(::Type{ZNTensor{T,L,N}}) where {T,L,N} = "Z$N-symmetric Tensor"
 
 
 #= Constructors =#
-ZNTensor{T,N,M}(dims, in_out) where {T,N,M} =
-    ZNTensor{T,N,M}(ntuple(x->0:(M-1),N),dims, in_out, Dict())
+ZNTensor{T,L,N}(dims, in_out) where {T,L,N} =
+    ZNTensor{T,L,N}(ntuple(x->0:(N-1),L), dims, in_out, Dict())
 
-ZNTensor{M}(dims::NTuple{N}, in_out, T = ComplexF64) where {N,M} =
-    ZNTensor{T,N,M}(dims, in_out)
+ZNTensor{N}(dims::NTuple{L}, in_out, T = ComplexF64) where {N,L} =
+    ZNTensor{T,L,N}(dims, in_out)
 
-ZNTensor(dims::NTuple{N}, in_out, T = ComplexF64) where N =
-    ZNTensor{T,N,length(dims[1])}(dims, in_out)
+ZNTensor(dims::NTuple{L}, in_out, T = ComplexF64) where L =
+    ZNTensor{T,L,length(dims[1])}(dims, in_out)
 
-ZNTensor(dims, in_out, tensors::Dict{NTuple{N,Int}, Array{T,N}}) where {T,N} =
-    ZNTensor{T,N,length(dims[1])}(ntuple(x->0:length(dims[1])-1,N),dims, in_out, tensors)
+ZNTensor(dims, in_out, tensors::Dict{NTuple{L,Int}, Array{T,L}}) where {T,L} =
+    ZNTensor{T,L,length(dims[1])}(ntuple(x->0:length(dims[1])-1,L),dims, in_out, tensors)
 
-ZNTensor{M}(T::Type = ComplexF64) where M = ZNTensor{T,0,M}((),(),(),Dict())
+ZNTensor{N}(T::Type = ComplexF64) where N = ZNTensor{T,0,N}((),(),(),Dict())
 
-ZNTensor{T,N,M}(charges, dims, in_out) where {T,N,M} =
-    ZNTensor{T,N,M}(charges, dims, in_out, Dict())
+ZNTensor{T,L,N}(charges, dims, in_out) where {T,L,N} =
+    ZNTensor{T,L,N}(charges, dims, in_out, Dict())
 
-function constructnew(::Type{ZNTensor{S,L,M}}, newfields, newtensor::Dict{NTuple{N,Int},Array{T,N}}) where {N,M,L,T,S}
-    return ZNTensor{T,N,M}(newfields...,newtensor)
-end
+# function constructnew(::Type{ZNTensor{T1,L1,N1}}, newfields,
+#             newtensor::Dict{NTuple{L,Int},Array{T,N}}) where {T1,L1,N1}
+#     return ZNTensor{T,N,M}(newfields...,newtensor)
+# end
 
 #= Helper Functions =#
-scalar(A::ZNTensor{T,0,M}) where {T,M} = first(first(values(A.tensor)))
-
-filterfun(::Type{<:ZNTensor{T,N,M}}) where {T,N,M}  = (x, y) -> iszero(mod(sum(x .* y), M))
-
-isinvariant(A::ZNTensor{T,N,M}) where {T,N,M} =
-    all(iszero ∘ (x->mod(x,M)) ∘ sum, in_out(A) .* k for k in keys(tensor(A)))
-
-charge(A::ZNTensor{T,N,M}) where {T,N,M} = -mod(sum(map(*,in_out(A),first(keys(tensor(A))))),M)
-
-fusecharge(::Type{<:ZNTensor{T,N,M}}, oldcharges, in_out, out) where {T,N,M} = 0:(M-1)
-
-fusecharges(::Type{<:ZNTensor{T,N,M}}, in_out, out) where {T,M,N} = x -> mod(out * sum(x .* in_out),M)
-
-Base.rand(::Type{ZNTensor{T,N,M}}, dims, in_out) where {T,N,M} =
-    Base.rand(ZNTensor{T,N,M}, ntuple(x -> 0:(M-1),N), dims, in_out)
+Base.rand(::Type{ZNTensor{T,L,N}}, dims, in_out) where {T,L,N} =
+    Base.rand(ZNTensor{T,L,N}, ntuple(x -> 0:(N-1),L), dims, in_out)
 
 
 #= Copy and Similarity Functions =#
@@ -91,8 +122,8 @@ function similar_from_indices(T::Type, poA, poB, p1, p2,
                 TT.getindices(CB == :N ? sizes(B) : reverse.(sizes(B)), poB)),
                 p12)
     in_outsC = TT.getindices(TT.vcat(
-                TT.getindices(CA == :N ? in_out(A) : -1 .* in_out(A), poA),
-                TT.getindices(CB == :N ? in_out(B) : -1 .* in_out(B), poB)),
+                TT.getindices(CA == :N ? in_out(A) : -in_out(A), poA),
+                TT.getindices(CB == :N ? in_out(B) : -in_out(B), poB)),
                 p12)
     return ZNTensor{T,length(p12),M}(chargesC, deepcopy(sizesC), in_outsC,Dict())
 end
