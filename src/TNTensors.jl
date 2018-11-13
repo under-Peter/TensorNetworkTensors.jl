@@ -24,6 +24,7 @@ export ZNTensor, ZNCharge, ZNCharges, ZNSector
 export U1Tensor, U1Charge, U1Charges, U1Sector
 export svdcutfun_default, svdcutfun_discardzero , svdcutfun_maxχ,
     svdcutfun_maxcumerror, svdcutfun_maxerror
+export ⊗, ⊕
 include("DASTensors.jl")
 
 toarray(a::DTensor) = a.array

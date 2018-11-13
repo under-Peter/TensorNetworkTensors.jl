@@ -10,8 +10,17 @@ abstract type DASCharges end
 ⊕(a::DASCharges) = a
 ⊕(a::T, b::T, c::T...) where {T<:DASCharges} = ⊕((a ⊕ b),c...)
 
+function Base.iterate(a::DASCharges,i = 1)
+    if i <= length(a)
+        return (a[i], i+1)
+    else
+        return nothing
+    end
+end
+
 abstract type DASCharge end
 iszero(a::DASCharge) = iszero(a.ch)
+⊕(a::DASCharge) = a
 ⊕(a::DASCharge, b::DASCharge, c::DASCharge...) = ⊕(a ⊕ b, c...)
 -(a::DASCharge) = -1 ⊗ a
 isless(a::DASCharge, b::DASCharge) = isless(a.ch, b.ch)
@@ -31,6 +40,9 @@ function isless(a::DASSector{N}, b::DASSector{N}) where N
 end
 ==(a::DASSector{N}, b::DASSector{N}) where N = a.chs == b.chs
 ==(a::DASSector, b::DASSector) = false
+
+vcat(s::DASSector) = s
+vcat(s1::DASSector, s2::DASSector, s3::DASSector...) = vcat(vcat(s1,s2),s3...)
 
 struct InOut{N}
     v::NTuple{N,Int}
@@ -52,11 +64,13 @@ end
 getindex(a::InOut, i::Int) = InOut{1}(a.v[i])
 getindex(a::InOut, i::NTuple{L}) where L = InOut{L}(TT.getindices(a.v,i))
 length(::InOut{L}) where L = L
+vcat(a::InOut) = a
 vcat(a::InOut{L1}, b::InOut{L2}) where {L1,L2} = InOut{L1+L2}(TT.vcat(a.v,b.v))
+vcat(a::InOut, b::InOut, c::InOut...) = vcat(vcat(a,b),c...)
 
 filterfun = iszero ∘ charge
 invariantsectors(charges, io::InOut) = Iterators.filter(filterfun ∘ ⊗(io), allsectors(charges))
-charge(a::DASTensor) = charge(first(keys(a)))
+charge(a::DASTensor) = charge( in_out(a) ⊗ first(keys(a)))
 isinvariant(a::DASTensor) = all(iszero ∘ charge, keys(a))
 scalar(a::DASTensor) = scalar(first(values(a)))
 
@@ -101,7 +115,7 @@ end
 
 #= Convert =#
 function Base.convert(::Type{DTensor{S}}, A::DASTensor{T,N}) where {S,T,N}
-    iszero(N) && return DTensor(convert(Array{S}, tensor(A)[()]))
+    iszero(N) && return DTensor(convert(Array{S}, first(values(tensor(A)))))
 
     cumdims = (prepend!(cumsum(d),0) for d in sizes(A))
     degenrange = [map((x, y) -> x+1:y, cd[1:end-1], cd[2:end]) for cd in cumdims]
@@ -249,7 +263,7 @@ function _errorsadd(A, C, perm::NTuple{N}) where N
     for (m, iA, iC) in zip(mask, 1:N, perm)
         charges(A, iA) == ifelse(m, charges(C, iC), -charges(C, iC)) ||
             throw(ArgumentError("charges don't agree"))
-        sizes(A, iA) == sizes(C, ifelse(m, iC, N-iC+1)) ||
+        sizes(A, iA) == ifelse(m,sizes(C, iC), reverse(sizes(C,iC))) ||
             throw(DimensionMismatch())
     end
     modio = InOut(ntuple(i -> ifelse(mask[i],1,-1),N))
@@ -283,7 +297,7 @@ function _errorstrace(A::DASTensor{T,N}, cindA1::NTuple{M,Int},
     for (m, iA1, iA2) in zip(maskA, cindA1, cindA2) #trace in A
         charges(A, iA1) == ifelse(m, charges(A, iA2), -charges(A,iA2)) ||
             throw(ArgumentError("charges don't agree"))
-        sizes(A, iA1) == sizes(A, ifelse(m,iA2,N-iA2+1))||
+        sizes(A, iA1) == ifelse(m, sizes(A, iA2), reverse(sizes(A,iA2))) ||
             throw(DimensionMismatch())
     end
     indsA = TT.sort(indCinA)
@@ -293,7 +307,7 @@ function _errorstrace(A::DASTensor{T,N}, cindA1::NTuple{M,Int},
     for (m, iA, iC) in zip(maskC, indsA, perm) #trace in A
         charges(A, iA) == ifelse(m, charges(C, iC), -charges(C,iC)) ||
             throw(ArgumentError("charges don't agree"))
-        sizes(A, iA) == sizes(C, ifelse(m, iC, NC - iC + 1)) ||
+        sizes(A, iA) == ifelse(m, sizes(C, iC), reverse(sizes(C,iC))) ||
             throw(DimensionMismatch())
     end
     maskAio = InOut{M}(ntuple(i -> ifelse(maskA[i],1,-1), M))
@@ -310,8 +324,8 @@ function trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}}, β, C::DASTensor{S,M},
     perm = TT.sortperm(indCinA)
     sectors = filter(x -> isequal(maskAfun(x[cindA1]), x[cindA2]), keys(A))
     cinds = TT.vcat(cindA1, cindA2)
-    maskCfun(permute(deleteat(first(sectors), cinds),perm))
-    passedset = Set{}()
+    t = typeof(maskCfun(permute(deleteat(first(sectors), cinds),perm)))
+    passedset = Vector{t}() #might be slower for more elements
     for sector in sectors
         newsector = maskCfun(permute(deleteat(sector, cinds),perm))
         if haskey(tensor(C), newsector)
@@ -347,7 +361,7 @@ function _errorscontract(A::DASTensor{TA,NA}, (oindA, cindA)::Tuple{NTuple{NoA,I
         iB = cindB[i]
         charges(A,iA) == ifelse(m, charges(B,iB), -charges(B,iB)) ||
             throw(ArgumentError("charges don't agree"))
-        sizes(A,iA) == sizes(B, ifelse(m, iB, NB - iB + 1)) ||
+        sizes(A,iA) == ifelse(m, sizes(B,iB), reverse(sizes(B,iB))) ||
             throw(DimensionMismatch())
     end
     ioAB  = vcat(in_out(A, oindA), in_out(B, oindB))
@@ -361,8 +375,8 @@ function _errorscontract(A::DASTensor{TA,NA}, (oindA, cindA)::Tuple{NTuple{NoA,I
         iC = i
         chsAB[iAB] == ifelse(m, charges(C, iC), -charges(C,iC)) ||
             throw(ArgumentError("charges don't agree"))
-        dsAB[iAB] == sizes(C, ifelse(m, iC, NC - iC + 1)) ||
-            throw(DimensionMismatch())
+        dsAB[iAB] == ifelse(m, sizes(C,iC), reverse(sizes(C,iC))) ||
+         throw(DimensionMismatch())
     end
 
     maskBio = InOut{CoA}(tuple(ifelse.(maskB,1,-1)...))
@@ -377,10 +391,12 @@ function contract!(α, A::DASTensor{TA,NA}, ::Type{Val{CA}},
                       {TA,NA,TB,NB,TC,NC,CA,CB,M}
     #conditions
     maskBfun, maskABfun = _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
+
     oinAB = TT.vcat(oindA, oindB .+ NA)
     indCinAB = TT.getindices(oinAB, indCinoAB)
     secsA = groupby(x -> x[cindA], keys(A))
     secsB = groupby(x -> maskBfun(x[cindB]), keys(B))
+
     # collect sectors that contract with each other
     secsAB = intersect(keys(secsA), keys(secsB))
     passedset = Set()
@@ -418,26 +434,37 @@ contract!(α, A::DASTensor, CA, B::DASTensor, CB, β, C::DASTensor,
 
 #= Reshaping =#
 #== Fusion ==#
+_ktype(::ZNTensor{T,L,N}, M) where {T,L,N} = ZNSector{M,N}
+_ktype(::U1Tensor, M) = U1Sector{M}
+_chtype(::ZNTensor{T,L,N}) where {T,L,N} = ZNCharge{N}
+_chtype(::U1Tensor) where {T,L,N} = U1Charge
+_chstype(::ZNTensor{T,L,N}) where {T,L,N} = ZNCharges{N}
+_chstype(::U1Tensor) where {T,L,N} = U1Charges
+
 function fusiondict(A::T, indexes::NTuple{N,Int}, ld::Int) where {T<:DASTensor,N}
     #=
     fdict: oldcharges → newcharge & indices
     ddict: newcharges → dimension
     sdict: newcharges → [oldcharges & indices]
     =#
-    sdict = Dict{Int,Vector{Tuple{NTuple{N,Int},UnitRange}}}()
-    fdict = Dict{NTuple{N,Int},Tuple{Int,UnitRange}}()
-    ddict = Dict{Int,Int}()
+    sdict = Dict{_chtype(A),Vector{Tuple{_ktype(A,N),UnitRange}}}()
+    fdict = Dict{_ktype(A,N),Tuple{_chtype(A),UnitRange}}()
+    ddict = Dict{_chtype(A),Int}()
+
     ochs = charges(A, indexes)
     oios = in_out(A, indexes)
     ods  = sizes(A, indexes)
 
-    for chs in Iterators.product(ochs...)
-        nch = fusecharges(T, oios, ld)(chs)
+    for chs in allsectors(ochs)
+        nch = ld ⊗ charge(oios ⊗ chs)
         if !haskey(sdict, nch)
             sdict[nch] = []
             ddict[nch] = 0
         end
-        d = prod((ods[i][findfirst(==(ch), ochs[i])] for (i,ch) in enumerate(chs)))
+        d = 1
+        for i in 1:N
+            d *= ods[i][chargeindex(chs[i],ochs[i])]
+        end
         push!(sdict[nch], (chs, (1:d) .+ ddict[nch]))
         fdict[chs] = (nch, sdict[nch][end][2])
         ddict[nch] += d
@@ -446,57 +473,78 @@ function fusiondict(A::T, indexes::NTuple{N,Int}, ld::Int) where {T<:DASTensor,N
 end
 
 function fusiondict(A::T, i::Int, ld::Int) where {T<:DASTensor}
-    sdict = Dict{Int,Vector{Tuple{Int,UnitRange}}}()
-    fdict = Dict{Int,Tuple{Int,UnitRange}}()
-    ddict = Dict{Int,Int}()
-    for ch in charges(A,i)
-        nch = fusecharges(T, (in_out(A,i),), ld)((ch,))
-        d = sizes(A,i)[chargeindex(ch,charges(A,i))]
-        sdict[nch] = [(ch,1:d)]
+    sdict = Dict{_chtype(A),Vector{Tuple{_ktype(A,1),UnitRange}}}()
+    fdict = Dict{_chtype(A),Tuple{_chtype(A),UnitRange}}()
+    ddict = Dict{_chtype(A),Int}()
+
+    for j in 1:length(charges(A,i))
+        ch = charges(A,i)[j]
+        nch = ld ⊗ (in_out(A,i).v[1] ⊗ ch)
+        d = sizes(A,i)[j]
+        sdict[nch] = [(_ktype(A,1)((ch,)),1:d)]
         fdict[ch] = (nch, 1:d)
         ddict[nch] = d
     end
     return (fdict, ddict, sdict)
 end
 
-function fusiondicts(A, indexes, lds)
-    dicts = [fusiondict(A,i,ld) for (i,ld) in zip(indexes, lds)]
-    return collect(zip(dicts...))
+function fusiondicts(A, indexes, lds::NTuple{N,Int}) where N
+    fds = Dict[]
+    sds = Dict[]
+    dds = Dict{_chtype(A),Int}[]
+    for i in 1:N
+        fd, dd, sd = fusiondict(A, indexes[i], lds[i])
+        push!(fds, fd)
+        push!(dds, dd)
+        push!(sds, sd)
+    end
+    return (fds, dds, sds)
 end
 
-function fusefields(A::T, indexes, lds, ddicts) where {T<:DASTensor}
-    ochs = [charges(A,i) for i in indexes]
-    oios = [in_out(A,i) for i in indexes]
-    newchs = tuple(map((ch,io,ld) -> fusecharge(T,ch,io,ld), ochs, oios, lds)...)
+function fusefields(A::T, indexes, lds::NTuple{N}, ddicts) where {T<:DASTensor,N}
+    ochs = [charges(A,inds) for inds in indexes]
+    oios = [in_out(A,inds) for inds in indexes]
+    newchs = _chstype(A)[]
+    for i in 1:length(indexes)
+        if indexes[i] isa Int
+            newch = ifelse(oios[i].v[1] == 1, ochs[i], -ochs[i])
+            newch = ifelse(lds[i] == 1, newch, -newch)
+            push!(newchs, newch)
+        else
+            newch = ifelse(oios[i][1].v[1] == 1, ochs[i][1], -ochs[i][1])
+            for j in 2:length(indexes[i])
+                newch = newch ⊕ ifelse(oios[i][j].v[1] == 1, ochs[i][j], -ochs[i][j])
+            end
+            push!(newchs,ifelse(lds[i]==1, newch, -newch))
+        end
+    end
     newds  = tuple(map((dict,chs) -> [dict[ch] for ch in chs], ddicts, newchs)...)
-    return (newchs, newds, lds)
+    return (tuple(newchs...)::NTuple{N}, newds::NTuple{N,Vector{Int}}, InOut(lds))
 end
 
 
 fuselegs(A::T, indexes::NTuple{M}) where {M,T<:DASTensor} = fuselegs(A, indexes, ntuple(i -> 1,M))
 function fuselegs(A::T, indexes, lds::NTuple{M,Int}) where {T<:DASTensor{S,N}, M} where {S,N}
-    _pick(sector, i::Int) = sector[i]
-    _pick(sector, i::NTuple) = TT.getindices(sector, i)
-
     fdicts, ddicts, sdicts = fusiondicts(A, indexes, lds)
     newfields = fusefields(A, indexes, lds, ddicts)
     perm = TT.vcat(indexes...)
     isperm(perm) || throw(ArgumentError("not valid specification of indexes"))
 
-    ntensor = Dict{NTuple{M,Int},Array{S,M}}()
+    ntensor = Dict{_ktype(A,M),Array{S,M}}()
     for (sector, degeneracy) in tensor(A)
-        tuples = map((i, fdict) -> fdict[_pick(sector, i)], indexes, fdicts)
-        nsector, nranges = collect(zip(tuples...))
+        tuples = map((i, fdict) -> fdict[sector[i]], indexes, fdicts)
+        nsec, nranges = collect(zip(tuples...))
+        nsector = _ktype(A,M)(nsec)
         if !haskey(ntensor, nsector)
-            ntensor[nsector] = zeros(S, map(getindex, ddicts, nsector)...)
+            ntensor[nsector] = zeros(S, map(getindex, ddicts, nsector.chs)...)
         end
         s = size(degeneracy)
         dims = map(i -> prod(s[vec(collect(i))]), indexes)
         ntensor[nsector][nranges...] = reshape(permutedims(degeneracy, perm), dims...)
     end
-    _totuple(x) = ifelse(x isa Tuple, x, (x,))
+    _totuple(x) = ifelse(typeof(x) <: Tuple, x, (x,))
     ochs = [_totuple(charges(A, i)) for i in indexes]
-    oios = [_totuple(in_out(A, i))  for i in indexes]
+    oios = [in_out(A, i)  for i in indexes]
     ods  = [_totuple(sizes(A, i))   for i in indexes]
     inverter = (ochs, oios, ods, sdicts)
     return (constructnew(T, newfields, ntensor), inverter)
@@ -507,41 +555,46 @@ end
 function splitlegs(A::T, inds::NTuple{M,Union{Int,NTuple{3,Int}}}, inverter) where {M,T<:DASTensor{S}} where S
     nchs, nios, ndims, sdicts = inverter
     cchs, cdims = charges(A), sizes(A)
-    ntensor = Dict{NTuple{M,Int},Array{S,M}}()
+    ntensor = Dict{_ktype(A,M),Array{S,M}}()
     rinds, iperm, perm = _reduceinds(inds)
     for (sector, degen) in tensor(A)
         nsecs, nranges = _splitsec(sector,rinds,sdicts)
-        for (nsec, nrange) in zip(nsecs, nranges)
-            dims = _splitsdims((sector, cchs, cdims), (nsec, nchs,ndims), inds, perm)
-            nsec = TT.getindices(nsec, iperm)
+        for i in 1:length(nranges)
+            nsec = nsecs[i]
+            nrange = nranges[i]
+            dims = _splitsdims((sector, cchs, cdims),
+                               (nsec, nchs,ndims),
+                               inds, perm)
+            nsec = nsec[iperm]
             ntensor[nsec] = copy(permutedims(reshape(view(degen, nrange...),
-                                        dims...), iperm) )
+                                        dims...), iperm))
         end
     end
     _pick(i::Int, current, old)  = current[i]
     _pick((l,m,n), current, old) = old[m][n]
     newchs = tuple([_pick(i, charges(A), nchs) for i in inds]...)
-    newios = tuple([_pick(i, in_out(A), nios)  for i in inds]...)
+    newios = vcat([_pick(i, in_out(A), nios)  for i in inds]...)
     newds  = tuple([_pick(i, sizes(A), ndims)    for i in inds]...)
     return constructnew(T, (newchs,newds,newios), ntensor)
 end
 
 function _splitsec(sector, inds, sdicts)
-    _pick(i::Int) = ((sector[i], :),)
+    _pick(i::Int) = ((sector[(i,)], :),)
     _pick((l,m,n)) = sdicts[m][sector[l]]
     nseccharges = [_pick(i) for i in inds]
     nsecs = []
     nranges = []
     for ns in Iterators.product(nseccharges...)
-        push!(nsecs, TT.vcat([s[1] for s in ns]...))
+        nsec = vcat([s[1] for s in ns]...)
+        push!(nsecs, nsec)
         push!(nranges, [s[2] for s in ns])
     end
     return (nsecs, nranges)
 end
 
 function _splitsdims((sector, cchs, cdims), (nsec, nchs, ndims), inds, perm)
-    _pick(i::Int, k)  = cdims[i][findfirst(==(sector[i]), cchs[i])]
-    _pick((l,m,n), k) = ndims[m][n][findfirst(==(nsec[k]), nchs[m][n])]
+    _pick(i::Int, k)  = cdims[i][chargeindex(sector[i], cchs[i])]
+    _pick((l,m,n), k) = ndims[m][n][chargeindex(nsec[k], nchs[m][n])]
     [_pick(i,k) for (k,i) in enumerate(TT.getindices(inds,perm))]
 end
 
@@ -556,12 +609,12 @@ end
 #= Functions =#
 function tensorsvd(A::T; svdcutfunction = svdcutfun_default) where {T <: DASTensor{Q,N}} where {Q,N}
     N == 2 || throw(ArgumentError("SVD only works on rank 2 tensors"))
-    tU = Dict{NTuple{N,Int},Array{Q,N}}()
-    tS = Dict{NTuple{N,Int},Array{Q,N}}()
-    tV = Dict{NTuple{N,Int},Array{Q,N}}()
+    tU = Dict{_ktype(A,N),Array{Q,N}}()
+    tS = Dict{_ktype(A,N),Array{Q,N}}()
+    tV = Dict{_ktype(A,N),Array{Q,N}}()
 
     lch = connectingcharge(T, charges(A), in_out(A), charge(A))
-    ld =  sizes(A,2)[[c in lch for c in charges(A,2)]]
+    ld =  sizes(A,2)[[chargeindex(c,charges(A,2)) for c in lch]]
 
     chU = (charges(A,1), lch)
     dU  = deepcopy.((sizes(A,1), ld))
@@ -569,19 +622,21 @@ function tensorsvd(A::T; svdcutfunction = svdcutfun_default) where {T <: DASTens
 
     chS = (lch, lch)
     dS  =  deepcopy.((ld,ld))
-    ioS = (-in_out(A,2), in_out(A,2))
+    ioS = vcat(-in_out(A,2), in_out(A,2))
 
     chV = (lch, charges(A,2))
-    dV  =  deepcopy.((ld,sizes(A,2)))
-    ioV = (-in_out(A,2), in_out(A,2))
+    dV  = deepcopy((ld,sizes(A,2)))
+    ioV = vcat(-in_out(A,2), in_out(A,2))
 
-    for ((in, out), degen) in tensor(A)
-        tU[(in, out)], tS[(out, out)], tV[(out, out)], cutoff =
-            _tensorsvd(degen, svdcutfunction = svdcutfunction, helper = true)
-        dU[2][findfirst(==(out), chU[2])] = cutoff
-        dS[1][findfirst(==(out), chS[1])] = cutoff
-        dS[2][findfirst(==(out), chS[2])] = cutoff
-        dV[1][findfirst(==(out), chV[1])] = cutoff
+    for (k, degen) in tensor(A)
+        in, out = k[1], k[2]
+        tU[_ktype(A,2)((in, out))], tS[_ktype(A,2)((out, out))],
+            tV[_ktype(A,2)((out, out))], cutoff =
+                _tensorsvd(degen, svdcutfunction = svdcutfunction, helper = true)
+        dU[2][chargeindex(out,chU[2])] = cutoff
+        dS[1][chargeindex(out,chS[1])] = cutoff
+        dS[2][chargeindex(out,chS[2])] = cutoff
+        dV[1][chargeindex(out,chV[1])] = cutoff
     end
     U = constructnew(T, (chU, dU, ioU), tU)
     S = constructnew(T, (chS, dS, ioS), tS)
@@ -618,14 +673,13 @@ function _tensorsvd(A::AbstractArray; svdcutfunction = svdcutfun_default,
 end
 
 
-function connectingcharge(::Type{<:U1Tensor}, (ch1,ch2), (io1,io2), charge)
-    _invertcharge(a::UnitRange) = (-a.stop):(-a.start)
+function connectingcharge(::Type{<:U1Tensor}, (ch1,ch2), io, charge)
     # ch1→[A]→ch2
-    ch1 = ifelse(io1 ==  1, _invertcharge(ch1), ch1) .- charge
-    ch2 = ifelse(io2 == -1, _invertcharge(ch2), ch2)
-    ch3 = intersect(ch1, ch2)
-    io2 == -1 && return _invertcharge(ch3)
-    return ch3
+    ch1r = ifelse(io[1].v[1] ==  1, -ch1, ch1).v .- charge.ch
+    ch2r = ifelse(io[2].v[1] == -1, -ch2, ch2).v
+    ch3r = intersect(ch1r, ch2r)
+    io[2].v[1] == -1 && return U1Charges(-ch3r)
+    return U1Charges(ch3r)
 end
 
 function connectingcharge(::Type{<:ZNTensor}, (ch1,ch2), ios, charge)

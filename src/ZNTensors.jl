@@ -29,6 +29,7 @@ getindex(s::ZNSector{L,N}, i::NTuple{M}) where {L,N,M} =
     ZNSector{M,N}(TT.getindices(s.chs,i))
 vcat(s1::ZNSector{L1,N}, s2::ZNSector{L2,N}) where {N,L1,L2} =
     ZNSector{L1 + L2,N}(TT.vcat(s1.chs, s2.chs))
+vcat(s1::ZNSector) = s1
 deleteat(s1::ZNSector{L,N}, i::NTuple{M}) where {L,N,M} =
     ZNSector{L-M,N}(TT.deleteat(s1.chs,i))
 
@@ -57,6 +58,8 @@ mutable struct ZNTensor{T,L,N} <: DASTensor{T,L}
     end
 end
 
+@inline znn(::ZNTensor{T,L,N}) where {T,L,N} = N
+
 
 #= Print =#
 printname(::Type{ZNTensor{T,L,N}}) where {T,L,N} = "Z$N-symmetric Tensor"
@@ -80,10 +83,10 @@ ZNTensor{N}(T::Type = ComplexF64) where N = ZNTensor{T,0,N}((),(),(),Dict())
 ZNTensor{T,L,N}(charges, dims, in_out) where {T,L,N} =
     ZNTensor{T,L,N}(charges, dims, in_out, Dict())
 
-# function constructnew(::Type{ZNTensor{T1,L1,N1}}, newfields,
-#             newtensor::Dict{NTuple{L,Int},Array{T,N}}) where {T1,L1,N1}
-#     return ZNTensor{T,N,M}(newfields...,newtensor)
-# end
+function constructnew(::Type{ZNTensor{T1,L1,N1}}, newfields,
+            newtensor::Dict{ZNSector{L,N},Array{T,L}}) where {T1,L1,N1,L,N,T}
+    return ZNTensor{T,L,N}(newfields...,newtensor)
+end
 
 #= Helper Functions =#
 Base.rand(::Type{ZNTensor{T,L,N}}, dims, in_out) where {T,L,N} =
@@ -121,10 +124,9 @@ function similar_from_indices(T::Type, poA, poB, p1, p2,
                 TT.getindices(CA == :N ? sizes(A) : reverse.(sizes(A)), poA),
                 TT.getindices(CB == :N ? sizes(B) : reverse.(sizes(B)), poB)),
                 p12)
-    in_outsC = TT.getindices(TT.vcat(
-                TT.getindices(CA == :N ? in_out(A) : -in_out(A), poA),
-                TT.getindices(CB == :N ? in_out(B) : -in_out(B), poB)),
-                p12)
+    in_outsC = vcat(
+        ifelse(CA == :N, in_out(A), - in_out(A))[poA],
+        ifelse(CB == :N, in_out(B), - in_out(B))[poB])[p12]
     return ZNTensor{T,length(p12),M}(chargesC, deepcopy(sizesC), in_outsC,Dict())
 end
 

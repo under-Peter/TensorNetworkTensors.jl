@@ -8,10 +8,11 @@ length(a::U1Charges) = length(a.v)
 function ⊕(a::U1Charges, b::U1Charges)
     loa, hia = extrema(a.v)
     lob, hib = extrema(b.v)
-    step = min(a.v.step, b.v.step)
+    step = min(abs(a.v.step), abs(b.v.step))
     return U1Charges((loa + lob):step:(hia + hib))
 end
--(a::U1Charges) = U1Charges(a.v.stop:(-a.v.step):a.v.start)
+-(a::U1Charges) = U1Charges(-a.v.stop:(a.v.step):-a.v.start)
+# -(a::U1Charges) = U1Charges(-a.v.start:(-a.v.step):-a.v.stop)
 
 struct U1Charge <: DASCharge
     ch::Int
@@ -72,7 +73,8 @@ U1Tensor(charges, dims, in_out, tensors::Dict{NTuple{N,Int}, Array{T,N}}) where 
 
 U1Tensor(T::Type = ComplexF64) = U1Tensor{T,0}((), (), (), Dict())
 
-function constructnew(::Type{<:U1Tensor}, newfields, newtensor::Dict{NTuple{M,Int},Array{T,M}}) where {M,T}
+function constructnew(::Type{<:U1Tensor}, newfields,
+        newtensor::Dict{U1Sector{M},Array{T,M}}) where {M,T}
     return U1Tensor{T,M}(newfields...,newtensor)
 end
 
