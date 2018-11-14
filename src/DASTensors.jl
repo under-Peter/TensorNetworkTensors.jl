@@ -4,18 +4,16 @@ const TT = TupleTools
 import TensorOperations: ndims, similar_from_indices, add!, trace!, contract!, scalar, numind
 import Base: iszero, -, ==, isless, getindex, vcat, length
 
+
 abstract type DASTensor{T,N} <: AbstractTensor{T,N} end
 
 abstract type DASCharges end
 ⊕(a::DASCharges) = a
 ⊕(a::T, b::T, c::T...) where {T<:DASCharges} = ⊕((a ⊕ b),c...)
 
-function Base.iterate(a::DASCharges,i = 1)
-    if i <= length(a)
-        return (a[i], i+1)
-    else
-        return nothing
-    end
+function Base.iterate(a::DASCharges, i = 1)
+    i <= length(a) && return (a[i], i+1)
+    return nothing
 end
 
 abstract type DASCharge end
@@ -34,11 +32,11 @@ charge(s::DASSector) = ⊕(s.chs...)
 function isless(a::DASSector{N}, b::DASSector{N}) where N
     @inbounds for i in 1:N
         a.chs[i] < b.chs[i] && return true
-        b.chs[i] < a.chs[i] && return false
+        a.chs[i] > b.chs[i] && return false
     end
     return false
 end
-==(a::DASSector{N}, b::DASSector{N}) where N = a.chs == b.chs
+==(a::T, b::T) where {T<:DASSector} = a.chs == b.chs
 ==(a::DASSector, b::DASSector) = false
 
 vcat(s::DASSector) = s
@@ -47,7 +45,6 @@ vcat(s1::DASSector, s2::DASSector, s3::DASSector...) = vcat(vcat(s1,s2),s3...)
 struct InOut{N}
     v::NTuple{N,Int}
     InOut{N}(i::Int) where N = new{1}((i,))
-    InOut(i::Int) = new{1}((i,))
     function InOut{N}(v::NTuple{N,Int}) where N
         all(in((1,-1)), v) || throw(ArgumentError("in-out = $v !∈ (1,-1)"))
         new{N}(v)
@@ -58,7 +55,6 @@ end
 
 ⊗(a::InOut{M}, b::T) where {M, T <: DASSector} = T(a.v .⊗ b.chs)
 ⊗(a::Int, b::T) where {T<:DASCharge} = T(a * b.ch)
-⊗(io::InOut{N}, ss::NTuple{L,T}) where {N,L,T<:DASSector} = ntuple(i -> io ⊗ ss[i], L)
 ⊗(io::InOut) = x -> io ⊗ x
 -(io::InOut) = InOut(-1 .* io.v)
 getindex(a::InOut, i::Int) = InOut{1}(a.v[i])
@@ -71,7 +67,7 @@ vcat(a::InOut, b::InOut, c::InOut...) = vcat(vcat(a,b),c...)
 filterfun = iszero ∘ charge
 invariantsectors(charges, io::InOut) = Iterators.filter(filterfun ∘ ⊗(io), allsectors(charges))
 charge(a::DASTensor) = charge( in_out(a) ⊗ first(keys(a)))
-isinvariant(a::DASTensor) = all(iszero ∘ charge, keys(a))
+isinvariant(a::DASTensor) = all(iszero ∘ charge ∘ ⊗(in_out(a)), keys(a))
 scalar(a::DASTensor) = scalar(first(values(a)))
 
 include("ZNTensors.jl")

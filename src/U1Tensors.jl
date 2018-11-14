@@ -12,27 +12,22 @@ function ⊕(a::U1Charges, b::U1Charges)
     return U1Charges((loa + lob):step:(hia + hib))
 end
 -(a::U1Charges) = U1Charges(-a.v.stop:(a.v.step):-a.v.start)
-# -(a::U1Charges) = U1Charges(-a.v.start:(-a.v.step):-a.v.stop)
 
 struct U1Charge <: DASCharge
     ch::Int
 end
 ⊕(a::U1Charge, b::U1Charge) = U1Charge(a.ch + b.ch)
-
 chargeindex(ch::U1Charge, chs::U1Charges) = div(ch.ch - chs.v.start, chs.v.step)+1
-
 getindex(s::U1Charges, i) = U1Charge(s.v[i])
+
 struct U1Sector{L} <: DASSector{L}
     chs::NTuple{L, U1Charge}
-    U1Sector(k::NTuple{L,Int}) where L =
-        new{L}(ntuple(i -> U1Charge(k[i]), L))
-    U1Sector{L}(k::NTuple{L,U1Charge}) where L =
-        new{L}(k)
+    U1Sector(k::NTuple{L,Int}) where L = new{L}(ntuple(i -> U1Charge(k[i]), L))
+    U1Sector{L}(k::NTuple{L,U1Charge}) where L = new{L}(k)
 end
 
-getindex(s::U1Sector{N},i::NTuple{M}) where {N,M} = U1Sector{M}(TT.getindices(s.chs,i))
-vcat(s1::U1Sector{N1}, s2::U1Sector{N2}) where {N1,N2} =
-    U1Sector{N1 + N2}(TT.vcat(s1.chs, s2.chs))
+getindex(s::U1Sector{N}, i::NTuple{M}) where {N,M} = U1Sector{M}(TT.getindices(s.chs,i))
+vcat(s1::U1Sector{N1}, s2::U1Sector{N2}) where {N1,N2} = U1Sector{N1 + N2}(TT.vcat(s1.chs, s2.chs))
 deleteat(s1::U1Sector{M}, i::NTuple{L}) where {L,M} = U1Sector{M-L}(TT.deleteat(s1.chs,i))
 
 allsectors(chs::NTuple{N,U1Charges}) where {N} =
@@ -95,24 +90,22 @@ function similar_from_indices(T::Type, index::NTuple{N,Int}, A::U1Tensor, B::U1T
     sizesC = TT.getindices(TT.vcat( CA == :N ? sizes(A) : reverse.(sizes(A)),
                                     CB == :N ? sizes(B) : reverse.(sizes(B)),
                                     index))
-    in_outC = TT.getindices(TT.vcat( CA == :N ? in_out(A) : -in_out(A),
-                                     CB == :N ? in_out(B) : -in_out(B)),
-                                     index)
+    in_outC =  vcat(ifelse(CA == :N, in_out(A), -in_out(A)),
+                    ifelse(CB == :N, in_out(B), -in_out(B)))[index]
     return U1Tensor{T,N}(chargesC , sizesC, in_outC)
  end
 
 function similar_from_indices(T::Type, poA, poB, p1, p2,
         A::U1Tensor, B::U1Tensor,
         ::Type{Val{CA}} = Val{:N}, ::Type{Val{CB}} = Val{:N}) where {CA,CB}
-    p12 = (p1...,p2...)
+    p12 = TT.vcat(p1,p2)
     chargesC = TT.getindices(TT.vcat(charges(A,poA), charges(B,poB)), p12)
     sizesC = TT.getindices(TT.vcat(
                 TT.getindices(CA == :N ? sizes(A) : reverse.(sizes(A)), poA),
                 TT.getindices(CB == :N ? sizes(B) : reverse.(sizes(B)), poB)),
                 p12)
-    in_outsC = vcat(
-        ifelse(CA == :N, in_out(A), - in_out(A))[poA],
-        ifelse(CB == :N, in_out(B), - in_out(B))[poB])[p12]
+    in_outsC = vcat(ifelse(CA == :N, in_out(A), - in_out(A))[poA],
+                    ifelse(CB == :N, in_out(B), - in_out(B))[poB])[p12]
     return U1Tensor{T, length(p12)}( chargesC, sizesC, in_outsC)
 end
 

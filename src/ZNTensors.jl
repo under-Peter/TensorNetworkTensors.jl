@@ -9,10 +9,8 @@ struct ZNCharge{N} <: DASCharge
     ZNCharge{N}(a) where {N} = new(mod(a,N))
 end
 ⊕(a::ZNCharge{N}, b::ZNCharge{N}) where {N} = ZNCharge{N}(a.ch + b.ch)
-
 chargeindex(ch::ZNCharge{N}, chs::ZNCharges{N}) where N = (ch.ch + 1)
-
-getindex(s::ZNCharges{N}, i) where N = ZNCharge{N}((0:(N-1))[i])
+getindex(s::ZNCharges{N}, i) where N = ZNCharge{N}(i-1)
 
 struct ZNSector{L,N} <: DASSector{L}
     chs::NTuple{L, ZNCharge{N}}
@@ -22,14 +20,12 @@ struct ZNSector{L,N} <: DASSector{L}
     ZNSector{L,N}(k::NTuple{L,ZNCharge}) where {L,N} =
         new(k)
 end
-
 ZNSector{N}(t::NTuple{L,Int}) where {N,L} =
     ZNSector{N,L}(ntuple(i -> ZNCharge{N}(t[i]),L))
 getindex(s::ZNSector{L,N}, i::NTuple{M}) where {L,N,M} =
     ZNSector{M,N}(TT.getindices(s.chs,i))
 vcat(s1::ZNSector{L1,N}, s2::ZNSector{L2,N}) where {N,L1,L2} =
     ZNSector{L1 + L2,N}(TT.vcat(s1.chs, s2.chs))
-vcat(s1::ZNSector) = s1
 deleteat(s1::ZNSector{L,N}, i::NTuple{M}) where {L,N,M} =
     ZNSector{L-M,N}(TT.deleteat(s1.chs,i))
 
@@ -57,8 +53,6 @@ mutable struct ZNTensor{T,L,N} <: DASTensor{T,L}
             tensor)
     end
 end
-
-@inline znn(::ZNTensor{T,L,N}) where {T,L,N} = N
 
 
 #= Print =#
@@ -109,9 +103,8 @@ function similar_from_indices(T::Type, index::NTuple{N,Int}, A::ZNTensor{S,NA,M}
     sizesC = TT.getindices(TT.vcat( CA == :N ? sizes(A) : reverse.(sizes(A)),
                                     CB == :N ? sizes(B) : reverse.(sizes(B)),
                                     index))
-    in_outC = TT.getindices(TT.vcat( CA == :N ? in_out(A) : -in_out(A),
-                                     CB == :N ? in_out(B) : -in_out(B)),
-                                     index)
+    in_outC =  vcat(ifelse(CA == :N, in_out(A), -in_out(A)),
+                    ifelse(CB == :N, in_out(B), -in_out(B)))[index]
     return ZNTensor{T,N,M}(chargesC , deepcopy(sizesC), in_outC)
  end
 
@@ -124,9 +117,8 @@ function similar_from_indices(T::Type, poA, poB, p1, p2,
                 TT.getindices(CA == :N ? sizes(A) : reverse.(sizes(A)), poA),
                 TT.getindices(CB == :N ? sizes(B) : reverse.(sizes(B)), poB)),
                 p12)
-    in_outsC = vcat(
-        ifelse(CA == :N, in_out(A), - in_out(A))[poA],
-        ifelse(CB == :N, in_out(B), - in_out(B))[poB])[p12]
+    in_outsC = vcat(ifelse(CA == :N, in_out(A), - in_out(A))[poA],
+                    ifelse(CB == :N, in_out(B), - in_out(B))[poB])[p12]
     return ZNTensor{T,length(p12),M}(chargesC, deepcopy(sizesC), in_outsC,Dict())
 end
 
