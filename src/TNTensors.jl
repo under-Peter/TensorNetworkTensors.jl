@@ -3,6 +3,7 @@ import TensorOperations
 using TupleTools
 using LinearAlgebra: svd, diagm
 import LinearAlgebra: diag
+using TensorOperations
 
 const TT = TupleTools
 include("auxiliaryfunctions.jl")

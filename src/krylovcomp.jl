@@ -8,10 +8,10 @@ function LinearAlgebra.mul!(w::DASTensor,v::DASTensor,a)
         delete!(kw.tensor, k)
     end
     for k in setdiff(kv,kw)
-        w[k] = a .* v[d]
+        w[k] = a .* v[k]
     end
     for k in intersect(kw,kv)
-        copyto!(w[k], a .* d)
+        copyto!(w[k], a .* v[k])
     end
     return w
 end
