@@ -28,4 +28,6 @@ toarray(a::DTensor) = a.array
 toarray(a::DASTensor) = todense(a).array
 export toarray
 
+include("krylovcomp.jl")
+
 end # module
