@@ -80,7 +80,7 @@ contract!(α, A::DTensor, CA::Type{<:Val}, B::DTensor, CB::Type{<:Val}, β,
     contract!(α, A, CA, B, CB, β, C, oindA, cindA, oindB, cindB, (p1..., p2...), method)
 
 #= RESHAPING W/O CONTRACTION=#
-function fuselegs(A::DTensor, indexes::NTuple)
+function fuselegs(A::DTensor, indexes)
     _pick(i::Int) = size(A,i)
     _pick(i::NTuple) = tuple((size(A,j) for j in i)...)
     perm = TT.vcat(indexes...)

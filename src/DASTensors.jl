@@ -469,7 +469,8 @@ function fusefields(A::T, indexes, lds, ddicts) where {T<:DASTensor}
 end
 
 
-fuselegs(A::T, indexes::NTuple{M}) where {M,T<:DASTensor} = fuselegs(A, indexes, ntuple(i -> 1,M))
+fuselegs(A::T, indexes) where {T<:DASTensor} =
+    fuselegs(A, indexes, ntuple(i -> 1,length(indexes)))
 function fuselegs(A::T, indexes, lds::NTuple{M,Int}) where {T<:DASTensor{S,N}, M} where {S,N}
     _pick(sector, i::Int) = sector[i]
     _pick(sector, i::NTuple) = TT.getindices(sector, i)
