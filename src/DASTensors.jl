@@ -590,13 +590,13 @@ function tensorsvd(A::DASTensor, indexes; svdcutfunction = svdcutfun_default)
     fA, inverter = fuselegs(A, indexes)
     U, S, Vt = tensorsvd(fA, svdcutfunction=svdcutfunction)
     li1 = length(indexes[1])
-    if !iszero(li1)
-        indxs = (ntuple(x -> (1,1,x), li1)..., (2,))
+    if indexes[1] isa Tuple
+        indxs = (ntuple(x -> (1,1,x), li1)..., 2)
         U = splitlegs(U, indxs, inverter)
     end
     li2 = length(indexes[2])
-    if !iszero(li2)
-        indxs = ((1,), ntuple(x -> (2,2,x), li2)...)
+    if indexes[2] isa Tuple
+        indxs = (1, ntuple(x -> (2,2,x), li2)...)
         Vt = splitlegs(Vt, indxs, inverter)
     end
     return (U,S,Vt)
