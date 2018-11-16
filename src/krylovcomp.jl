@@ -32,8 +32,21 @@ function LinearAlgebra.axpby!(a,v::AbstractTensor{<:Any,N},b,w::AbstractTensor{<
     tensoradd!(a,v,1:N,b,w,1:N)
 end
 
-function LinearAlgebra.dot(v::T,w::T) where {T<:AbstractTensor{S,N}} where {S,N}
-    scalar(tensorcontract(v,1:N,w',1:N))
+# function LinearAlgebra.dot(v::T,w::T) where {T<:AbstractTensor{S,N}} where {S,N}
+#     scalar(tensorcontract(v,1:N,w',1:N))
+# end
+
+function LinearAlgebra.dot(v::T,w::T) where {T<:DTensor{S,N}} where {S,N}
+    dot(v.array,w.array)
+end
+
+function LinearAlgebra.dot(v::T,w::T) where {T<:DASTensor{S,N}} where {S,N}
+    ks = intersect(keys(v),keys(w))
+    result = 0
+    for k in ks
+        result += dot(v[k],w[k])
+    end
+    return result
 end
 
 function LinearAlgebra.norm(v::AbstractTensor)
