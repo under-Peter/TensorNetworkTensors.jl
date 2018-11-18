@@ -54,5 +54,5 @@ function LinearAlgebra.norm(v::AbstractTensor)
 end
 
 function Base.:*(a::AbstractTensor, b::Number)
-    apply!(a, x -> b * x)
+    apply(a, x -> b * x)
 end

@@ -28,6 +28,7 @@ Base.:(==)(A::DTensor{T,N}, B::DTensor{T,N}) where {T,N} = A.array == B.array
 Base.:(==)(A, B::DTensor) = false
 Base.:(==)(A::DTensor, B) = false
 apply!(A::DTensor, f) = (A.array[:] = f(A.array); A)
+apply(A::DTensor, f) = DTensor(f(copy(A.array)))
 Base.adjoint(A::DTensor{T,N}) where {T,N} = DTensor{T,N}(conj(A.array))
 diag(a::DTensor{T,2}) where T = diag(a.array)
 
