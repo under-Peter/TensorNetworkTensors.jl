@@ -1,6 +1,13 @@
 using LinearAlgebra
 
-Base.fill!(a::AbstractTensor, w) = apply!(a, x -> x .* 0 .+ w )
+Base.fill!(a::DTensor, w) = (fill!(a.array, w); a)
+function Base.fill!(a::DASTensor, w)
+    w != 0 && error("not implemented")
+    for k in collect(keys(a))
+        delete!(a.tensor,k)
+    end
+    a
+end
 
 function LinearAlgebra.mul!(w::DASTensor,v::DASTensor,a)
     kw, kv = keys(w), keys(v)
