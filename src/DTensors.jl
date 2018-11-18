@@ -115,12 +115,12 @@ function tensorsvd(A::DTensor{T}, indexes; svdcutfunction = svdcutfun_default) w
     U, S, Vt = tensorsvd(fA, svdcutfunction=svdcutfunction)
     li1 = length(indexes[1])
     if !iszero(li1)
-        indxs = (ntuple(x -> (1,1,x), li1)..., (2,))
+        indxs = (ntuple(x -> (1,1,x), li1)..., 2)
         U = splitlegs(U, indxs, inverter)
     end
     li2 = length(indexes[2])
     if !iszero(li2)
-        indxs = ((1,), ntuple(x -> (2,2,x), li2)...)
+        indxs = (1, ntuple(x -> (2,2,x), li2)...)
         Vt = splitlegs(Vt, indxs, inverter)
     end
     return (U,S,Vt)
