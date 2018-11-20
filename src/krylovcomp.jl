@@ -57,7 +57,9 @@ function LinearAlgebra.dot(v::T,w::T) where {T<:DASTensor{S,N}} where {S,N}
 end
 
 function LinearAlgebra.norm(v::AbstractTensor)
-    sqrt(dot(v,v))
+    n = sqrt(dot(v,v))
+    isreal(n) || error("norm should be real")
+    return real(n)
 end
 
 function Base.:*(a::AbstractTensor, b::Number)
