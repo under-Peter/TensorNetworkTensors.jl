@@ -4,6 +4,7 @@ using TupleTools
 using LinearAlgebra: svd, diagm
 import LinearAlgebra: diag
 using TensorOperations
+using Parameters
 
 const TT = TupleTools
 include("auxiliaryfunctions.jl")
@@ -29,6 +30,6 @@ toarray(a::DTensor) = a.array
 toarray(a::DASTensor) = todense(a).array
 export toarray
 
-include("krylovcomp.jl")
+include("krylovkit.jl")
 
 end # module

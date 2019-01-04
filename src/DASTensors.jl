@@ -1,144 +1,243 @@
-using Base.Iterators: product, filter
-import TensorOperations: ndims, similar_from_indices, add!, trace!, contract!, scalar, numind
+###Type Definitions
+## Symmetries; DAS =  Discrete Abelian Symmetries
+abstract type DAS end
+abstract type DASCharges end
+abstract type DASCharge end
+Base.hash(a::DASCharge, h::UInt) = hash(a.ch, h)
 
-abstract type DASTensor{T,N} <: AbstractTensor{T,N} end
+⊕(a::DASCharges) = a
+⊕(a::T, b::T, c::T...) where {T<:DASCharges} where N = ⊕((a ⊕ b),c...)
 
-include("ZNTensors.jl")
-include("U1Tensors.jl")
+function Base.iterate(a::DASCharges, i = 1)
+    i <= length(a) && return (a[i], i+1)
+    return nothing
+end
+Base.IteratorSize(::DASCharges) = Base.HasLength()
+Base.IteratorEltype(::DASCharges) = Base.HasEltype()
 
-#= Print =#
-function Base.show(io::IO, A::TT) where {TT<:DASTensor}
-    print(io, printname(TT))
-    println(io)
-    print(io, "charges: ", charges(A))
-    println(io)
-    print(io, "sizes: ", sizes(A))
-    println(io)
-    print(io, "in/out: ", in_out(A))
-    println(io)
-    print(io, "Tensors ", eltype(A))
+Base.iszero(a::DASCharge) = iszero(a.ch)
+Base.:-(a::T) where {T<:DASCharge} = InOut(-1) ⊗ a
+Base.:(==)(a::DASCharge, b::DASCharge) = a.ch == b.ch
+Base.isless(a::DASCharge, b::DASCharge) = isless(a.ch, b.ch)
+
+include("U1.jl")
+include("ZN.jl")
+include("NDAS.jl");
+
+#Sector
+struct DASSector{N,T}
+    chs::NTuple{N,T}
+    DASSector(chs::T...) where T = new{length(chs),T}(chs)
+    DASSector{N,T}(chs::T...) where {N,T} = new{N,T}(chs)
 end
 
-#= Rand =#
-_get_sectors(charges, in_out, filterfun) = (sector for sector in product(charges...)
-                                                   if filterfun(sector, in_out))
+Base.show(io::IO, s::DASSector{N,S}) where {N,S}  = print(io, "DASSector", s.chs)
 
-function _get_degeneracy(charges, sector::NTuple{N,Int}, sizes, ::Type{T}) where {N,T}
-    dsizes = map((si,se,ch) -> si[findfirst(==(se), ch)],sizes,sector,charges)
-    return rand(T, dsizes...)
+function Base.iterate(a::DASSector{N}, i = 1) where N
+    i <= length(a) && return (a[i], i+1)
+    return nothing
 end
+Base.IteratorSize(::DASSector) = Base.HasLength()
+Base.IteratorEltype(::DASSector) = Base.HasEltype()
 
-function Base.rand(::Type{TT}, charges, dims, in_out) where {TT <: DASTensor{S}} where S
-    #singular charges are allowed to have covariant tensors
-    nonsing = collect(map(!isequal(1)∘length, charges))
-    a = TT(charges[nonsing], dims[nonsing], in_out[nonsing])
-    sectors = _get_sectors(charges, in_out, filterfun(TT))
-    for sector in sectors
-        a.tensor[sector[nonsing]] = _get_degeneracy(charges[nonsing],
-                                                    sector[nonsing],
-                                                    dims[nonsing], S)
+Base.length(s::DASSector{N}) where N = N
+Base.eltype(::DASSector{N,T}) where {N,T} = T
+Base.hash(a::DASSector, h::UInt) = hash(a.chs, h)
+⊕(s1::DASSector{N,T}, s2::DASSector{N,T}) where {N,T} = DASSector(map(⊕, s1.chs, s2.chs))
+Base.getindex(s::DASSector,i::Int) = s.chs[i]
+permute(s::DASSector{N,T}, perm) where {N,T}  = DASSector{N,T}(TT.permute(s.chs,perm)...)
+charge(s::DASSector) = reduce(⊕, s.chs)
+Base.isless(a::T, b::T) where {T<:DASSector} = a.chs < b.chs
+Base.:(==)(a::T, b::T) where {T<:DASSector} = hash(a) == hash(b)
+Base.:(==)(a::DASSector, b::DASSector) = false
+
+Base.vcat(s::DASSector) = s
+Base.vcat(s1::DASSector, s2::DASSector, s3::DASSector...) =
+    vcat(vcat(s1,s2),s3...)
+Base.getindex(s::DASSector{N,T}, i::NTuple{M}) where {N,T,M} =
+    DASSector{M,T}(TT.getindices(s.chs,i)...)
+Base.vcat(s1::DASSector{N1,T}, s2::DASSector{N2,T}) where {T,N1,N2} =
+    DASSector{N1+N2,T}(TT.vcat(s1.chs, s2.chs)...)
+deleteat(s1::DASSector{N,T}, i::NTuple{M}) where {N,T,M} =
+    DASSector{N-M,T}(TT.deleteat(s1.chs,i)...)
+
+#InOut
+struct InOut{N}
+    v::NTuple{N,Int}
+    function InOut(v::Int...)
+        all(in((1,-1)), v) || throw(ArgumentError("elements must either be 1 or -1"))
+        new{length(v)}(v)
     end
-    return a
+end
+Base.show(io::IO, s::InOut) = print(io, "InOut", s.v)
+
+function Base.iterate(a::InOut{N}, i = 1) where N
+    i <= N && return (InOut(a.v[i]), i+1)
+    return nothing
+end
+Base.IteratorSize(::InOut) = Base.HasLength()
+Base.IteratorEltype(::InOut) = Base.HasEltype()
+
+Base.length(::InOut{L}) where L = L
+Base.eltype(::InOut) = InOut{1}
+⊗(a::InOut{N}, b::T) where {T<:DASSector,N} = T(map(⊗, ntuple(i -> a[i] ,Val{N}()) , b.chs)...)
+⊗(a::InOut{1}, b::T) where {T<:DASCharge} = T(a.v[1] * b.ch)
+⊗(a::InOut{1}, b::T) where {T<:NDASCharge} = NDASCharge(map(⊗(a),b.ch)...)
+⊗(a::InOut{M}, b::NTuple{M,DASCharges}) where {M} = ntuple(i -> a[i] ⊗ b[i], Val(M))
+⊗(a::InOut{1}, b::DASCharges) = a.v == (1,) ? b : inv(b)
+
+
+⊗(io::InOut) = x -> io ⊗ x
+Base.inv(io::InOut) = InOut((-1 .* io.v)...)
+Base.getindex(a::InOut, i::Int) = InOut(a.v[i])
+Base.getindex(a::InOut, i::Union{NTuple{L},UnitRange}) where L = InOut(TT.getindices(a.v,i)...)
+Base.lastindex(::InOut{L}) where L = L
+Base.vcat(a::InOut) = a
+Base.vcat(a::InOut, b::InOut) = InOut(a.v..., b.v...)
+Base.vcat(a::InOut, b::InOut, c::InOut...) = vcat(vcat(a,b),c...)
+
+#sector generators
+allsectors(a::NTuple{N,DASCharges}) where N = (DASSector(s...) for s in Iterators.product(a...))
+covariantsectors(charges, io::InOut, ch = zero(eltype(first(charges)))) =
+    Iterators.filter(==(ch) ∘ charge ∘ ⊗(io), allsectors(charges))
+invariantsectors(charges, io::InOut) = covariantsectors(charges, io)
+
+# TENSOR
+mutable struct DASTensor{T,N,SYM,CHARGES,SIZES,CHARGE} <: AbstractTensor{T,N}
+    chs     ::NTuple{N, CHARGES}
+    dims    ::NTuple{N, SIZES}
+    io      ::InOut{N}
+    tensor  ::Dict{DASSector{N,CHARGE},Array{T,N}}
 end
 
-#= Convert =#
-function Base.convert(::Type{DTensor{S}}, A::DASTensor{T,N}) where {S,T,N}
-    iszero(N) && return DTensor(convert(Array{S}, tensor(A)[()]))
-
-    cumdims = (prepend!(cumsum(d),0) for d in sizes(A))
-    degenrange = [map((x, y) -> x+1:y, cd[1:end-1], cd[2:end]) for cd in cumdims]
-    rangedict = Dict{NTuple{2,Int},UnitRange}()
-    for (i, chs) in enumerate(charges(A)), (j, ch) in enumerate(chs)
-        rangedict[(i, ch)] = degenrange[i][j]
-    end
-    array = zeros(S, map(last, cumdims)...)
-    for (sector, degeneracy) in tensor(A)
-        indexrange = [rangedict[(i, s)] for (i, s) in enumerate(sector)]
-        array[indexrange...] = degeneracy
-    end
-    DTensor{S,N}(array)
+function Base.show(io::IO, A:: DASTensor{T,N,SYM}) where {T,N,SYM}
+    print(io, "DASTensor{",T,",",N,",",SYM,"}\n")
+    print(io, "charges: ", charges(A), "\n")
+    print(io, "sizes: ",   sizes(A), "\n")
+    print(io, "in/out: ",  in_out(A), "\n")
+    print(io, "Tensors ",  eltype(A), "\n")
 end
 
-todense(A::DASTensor{T,N}) where {T,N} = convert(DTensor{T},A)
-function diag(A::DASTensor{T,2}) where T
-    ks = sort(collect(keys(A)))
-    return reduce(vcat, diag(A[k]) for k in ks)
-end
+##Functions
+DASTensor{T,N}(sym::ST,charges, dims, io, dict=Dict()) where {T,N,ST <: DAS} =
+    DASTensor{T,N,sym,chargestype(sym),Vector{Int},chargetype(sym)}(charges,dims,io,dict)
 
-function scalar(A::DASTensor{T,0}) where T
-    isempty(A.tensor) && return 0
-    return scalar(first(values(A.tensor)))
-end
+charges(A::DASTensor)        = A.chs
+charges(A::DASTensor,i::Int) = A.chs[i]
+charges(A::DASTensor,i)      = TT.getindices(A.chs,i)
 
+sizes(A::DASTensor)          = A.dims
+sizes(A::DASTensor,i::Int)   = A.dims[i]
+sizes(A::DASTensor,i)        = TT.getindices(A.dims,i)
 
-#getters
-@inline charges(A::DASTensor) = A.charges
-@inline sizes(A::DASTensor)   = A.sizes
-@inline in_out(A::DASTensor)  = A.in_out
-@inline tensor(A::DASTensor)  = A.tensor
+in_out(A::DASTensor)    = A.io
+in_out(A::DASTensor,i)  = A.io[i]
 
-@inline charges(A::DASTensor,i::Int) = A.charges[i]
-@inline charges(A::DASTensor,i) = TT.getindices(A.charges,i)
-@inline sizes(A::DASTensor,i::Int)   = A.sizes[i]
-@inline sizes(A::DASTensor,i)   = TT.getindices(A.sizes,i)
-@inline chargesize(A::DASTensor, ch, i::Int) = A.sizes[i][findfirst(==(ch), A.charges[i])]
-@inline in_out(A::DASTensor,i::Int)  = A.in_out[i]
-@inline in_out(A::DASTensor,i)  = TT.getindices(A.in_out,i)
-@inline tensor(A::DASTensor,i)  = A.tensor[i]
-@inline Base.getindex(A::DASTensor, i) = A.tensor[i]
-@inline Base.setindex!(A::DASTensor{T,N}, t, i::NTuple{N}) where {T,N} = (A.tensor[i] = t; A)
-@inline Base.values(A::DASTensor) = values(A.tensor)
-@inline Base.keys(A::DASTensor) = keys(A.tensor)
+tensor(A::DASTensor)    = A.tensor
+Base.getindex(A::DASTensor, i) = A.tensor[i]
+Base.setindex!(A::DASTensor{T,N}, t, i::DASSector{N}) where {T,N} =
+    (A.tensor[i] = t; A)
 
-#setters
-@inline setcharges!(A::DASTensor, charges) = (A.charges = charges; A)
-@inline setsizes!(A::DASTensor, sizes)     = (A.sizes   = sizes;   A)
-@inline setin_out!(A::DASTensor, in_out)   = (A.in_out  = in_out;  A)
-@inline settensor!(A::DASTensor, tensor)   = (A.tensor  = tensor;  A)
-
+Base.values(A::DASTensor) = values(A.tensor)
+Base.keys(A::DASTensor) = keys(A.tensor)
+Base.haskey(A::DASTensor,k) = haskey(A.tensor,k)
 Base.eltype(A::DASTensor{T,N}) where {T,N} = T
 Base.ndims(A::DASTensor{T,N}) where {T,N} = N
-TensorOperations.numind(A::DASTensor{T,N}) where {T,N} = N
+
+setcharges!(A::DASTensor, charges) = (A.chs = charges; A)
+setsizes!(A::DASTensor, sizes)     = (A.dims   = sizes;   A)
+setin_out!(A::DASTensor, in_out)   = (A.io  = in_out;  A)
+settensor!(A::DASTensor, tensor)   = (A.tensor  = tensor;  A)
+
 function Base.adjoint(A::DASTensor)
     B = apply(A, conj!)
-    B.in_out = -1 .* B.in_out
-    B
+    B.io = inv(B.io)
+    return B
+end
+
+function charge(a::DASTensor)
+    io = in_out(a)
+    och = charge(io ⊗ first(keys(a)))
+    for k in keys(a)
+        och == charge(io ⊗ k) || throw(ArgumentError("Tensor does not have unique charge"))
+    end
+    return och
+end
+
+isinvariant(a::DASTensor) = all(iszero ∘ charge ∘ ⊗(in_out(a)), keys(a))
+
+chargesize(charge::DASCharge, charges, dims) = dims[chargeindex(charge, charges)]
+chargesize(A::DASTensor, i, charge)          = chargesize(charge, charges(A,i), sizes(A,i))
+degeneracysize(sector, charges, dims)        = map(chargesize, sector, charges, dims)
+
+function initwith!(A::DASTensor{T,N}, fun, ch = zero(eltype(first(charges(A))))) where {T,N}
+    empty!(A.tensor)
+    dims, chs = sizes(A), charges(A)
+    for k in covariantsectors(charges(A), in_out(A), ch)
+        A.tensor[k] = fun(T, degeneracysize(k, chs, dims)...)
+    end
+    return A
+end
+
+function Base.rand(::Type{DASTensor{T,N}}, sym, charges, dims, io,
+                    ch = zero(eltype(first(charges)))) where {T,N}
+    A = DASTensor{T,N}(sym, charges, dims, io)
+    initwithrand!(A, ch)
+end
+
+initwithzero!(A, ch = zero(eltype(first(charges(A))))) = initwith!(A, zeros, ch)
+initwithrand!(A, ch = zero(eltype(first(charges(A))))) = initwith!(A, rand,  ch)
+
+function Base.convert(::Type{Array{S}}, A::DASTensor{T,N,<:Any,CHARGES,SIZES,CHARGE}) where
+        {S,T,N,CHARGES,SIZES,CHARGE}
+    iszero(N) && return convert(Array{S}, first(values(tensor(A))))
+    cumdims = ntuple(i -> prepend!(cumsum(sizes(A,i)),0) , N)
+    array = zeros(S, last.(cumdims)...)
+    for (sector, degeneracy) in tensor(A)
+        inds   = map(chargeindex, sector.chs, charges(A))
+        ranges = map((i, cdims) -> cdims[i]+1 : cdims[i+1], inds, cumdims)
+        array[ranges...] = degeneracy
+    end
+    array
+end
+toarray(a::DASTensor{T}) where {T} = convert(Array{T}, a)
+
+Base.convert(::Type{DTensor{S}}, A::DASTensor) where S = DTensor(convert(Array{S}, A))
+todense(A::DASTensor{T,N}) where {T,N} = convert(DTensor{T},A)
+
+function diag(A::DASTensor{T,2}) where T # TODO!!
+    ks = sort!(collect(keys(A)))
+    return reduce(vcat, diag(A[k]) for k in ks)
 end
 
 #= Equalities =#
 function Base.:(==)(A::TT, B::TT) where {TT <: DASTensor{T,N}} where {T,N}
-    _equality_helper(A, B) &&
-    _tensor_equ(tensor(A), tensor(B))
+    _equality_helper(A, B) && _tensor_equ(tensor(A), tensor(B))
 end
 
 Base.:(==)(A::DASTensor, B::DASTensor) = false
 
 function Base.:(≈)(A::DASTensor{T,N}, B::DASTensor{T,N}) where {T,N}
-    _equality_helper(A, B) &&
-    _tensor_approx(tensor(A), tensor(B))
+    _equality_helper(A, B) && _tensor_approx(A, B)
 end
 
 Base.:(≈)(A::DASTensor, B::DASTensor) = false
 
-_key_helpers(a,b) = (intersect(a,b), setdiff(a,b), setdiff(b,a))
-function _tensor_equ(A::Dict{V,K}, B::Dict{V,K}) where {V,K}
-    kAB, kAonly, kBonly = _key_helpers(keys(A),keys(B))
-    return  all([A[k] == B[k] for k in kAB]) &&
-            all([iszero(A[k]) for k in kAonly]) &&
-            all([iszero(B[k]) for k in kBonly])
+function _tensor_equ(A::DASTensor, B::DASTensor)
+    keys(A) == keys(B) || return false
+    all(k -> A[k] == B[k], keys(A))
 end
 
-function _tensor_approx(A::Dict{V,K}, B::Dict{V,K}) where {V,K}
-    kAB, kAonly, kBonly = _key_helpers(keys(A),keys(B))
-    return all([A[k] ≈ B[k] for k in kAB]) &&
-        all([isapprox(A[k], zero(A[k]), atol = 10^-14.) for k in kAonly]) &&
-        all([isapprox(B[k], zero(B[k]), atol = 10^-14.) for k in kBonly])
+function _tensor_approx(A::DASTensor, B::DASTensor)
+    keys(A) == keys(B) || return false
+    all(k -> A[k] ≈ B[k], keys(A))
 end
 
 _tensor_equ(A, B) = false
 
 function _equality_helper(A, B)
-    return  charges(A) == charges(B) &&
+    return  charge(A) == charge(B) &&
+            charges(A) == charges(B) &&
             sizes(A) == sizes(B) &&
             in_out(A) == in_out(B)
 end
@@ -158,6 +257,9 @@ end
 Base.copy(A::DASTensor) = Base.deepcopy(A)
 
 function Base.copyto!(dest::TT, source::TT) where {TT <: DASTensor}
+    setcharges!(dest, charges(source))
+    setsizes!(dest, deepcopy(sizes(source)))
+    setin_out!(dest, in_out(source))
     for (k,v) in source.tensor
         if haskey(dest.tensor,k)
             copyto!(dest[k], v)
@@ -167,484 +269,24 @@ function Base.copyto!(dest::TT, source::TT) where {TT <: DASTensor}
     end
 end
 
-function apply!(A::DASTensor, op)
-    for degeneracy in values(A)
-        degeneracy .= op(degeneracy)
-    end
-    return A
-end
+Base.similar(A::DASTensor{T,N,SYM}, ::Type{S}) where {T,N,SYM,S} =
+    DASTensor{S,N}(SYM, charges(A), deepcopy(sizes(A)), in_out(A))
 
-similar_from_indices(T::Type, p1::Tuple, p2::Tuple, A::DASTensor, CA::Type{<:Val}) =
-    similar_from_indices(T, (p1...,p2...), A, CA)
+Base.similar(A::DASTensor{T}) where T = similar(A,T)
 
 #= Operations on Tensors =#
-apply(A::DASTensor, op) = apply!(deepcopy(A), op)
+function apply!(A::DASTensor, fun!)
+    foreach(fun!, values(A))
+    return A
+end
+apply(A::DASTensor, fun!) = apply!(deepcopy(A), fun!)
 
-Base.:(*)(α::Number, A::DASTensor) = apply(A, x -> α .* x)
+Base.:(*)(α::Number, A::DASTensor) = apply(A, x -> x .= α .* x)
+Base.:(*)(A::DASTensor, α::Number) = α   * A
+Base.:(/)(A::DASTensor, α::Number) = 1/α * A
+
 Base.conj!(A::DASTensor) = apply!(A, conj!)
-Base.conj(A::DASTensor) = apply(A, conj!)
+Base.conj(A::DASTensor)  = apply(A, conj!)
 
-function _errorsadd(A, C, perm::NTuple{N}) where N
-    _invert(a::UnitRange) = (-a.stop):(-a.start)
-    _znhelper(A::ZNTensor{T,N,NN}) where {T,N,NN} = NN
-    mask = in_out(A) .== in_out(C, perm)
-    for (m, iA, iC) in zip(mask, 1:N, perm)
-        if m
-            charges(A, iA) == charges(C, iC) || throw(ArgumentError("charges don't agree"))
-            sizes(A, iA) == sizes(C, iC) || throw(DimensionMismatch())
-        else
-            if A isa ZNTensor
-                charges(A, iA) == charges(C, iC) || throw(ArgumentError("charges don't agree"))
-            else
-                charges(A, iA) == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
-            end
-
-            sizes(A, iA) == reverse(sizes(C, iC)) || throw(DimensionMismatch())
-        end
-    end
-    maskarr = [ifelse(b,1,-1) for b in mask]
-    if A isa ZNTensor
-        return x -> tuple(mod.(maskarr .* x, _znhelper(A))...)
-    else
-        return x -> tuple((maskarr .* x)...)
-    end
-end
-
-function add!(α::Number, A::DASTensor{T,N}, conjA::Type{Val{CA}},
-     β::Number, C::DASTensor{S,N}, indCinA) where {T,S,N,CA}
-    perm = TT.sortperm(indCinA)
-    maskfun = _errorsadd(A, C, perm)
-
-    for (sector, degeneracy) in tensor(A)
-        permsector = TT.permute(maskfun(sector), perm)
-        if haskey(tensor(C), permsector)
-            add!(α, degeneracy, conjA, β, C[permsector], indCinA)
-        else
-            C[permsector] = similar_from_indices(T, indCinA, degeneracy)
-            add!(α, degeneracy, conjA, 0, C[permsector], indCinA)
-        end
-    end
-    return C
-end
-
-add!(α, A::DASTensor, CA, β, C::DASTensor, p1, p2) = add!(α, A, CA, β, C, (p1...,p2...))
-
-function _errorstrace(A::DASTensor{T,N}, cindA1::NTuple{M1,Int}, cindA2::NTuple{M2,Int}, C, indCinA) where {M1,M2,T,N}
-    _invert(a::UnitRange) = (-a.stop):(-a.start)
-    _znhelper(A::ZNTensor{T,N,NN}) where {NN} = NN
-    M1 == M2 || throw(ArgumentError("indices to contract don't pair up") )
-    maskA = in_out(A, cindA1) .== -1 .* in_out(A, cindA2)
-    for (m, iA1, iA2) in zip(maskA, cindA1, cindA2) #trace in A
-        if m
-            charges(A, iA1) == charges(A, iA2) || throw(ArgumentError("charges don't agree"))
-            sizes(A, iA1) == sizes(A, iA2) || throw(DimensionMismatch())
-        else
-            if A isa ZNTensor
-                charges(A, iA1) == charges(A, iA2) || throw(ArgumentError("charges don't agree"))
-            else
-                charges(A, iA1) == _invert(charges(A, iA2)) || throw(ArgumentError("charges don't agree"))
-            end
-
-            sizes(A, iA1) == reverse(sizes(A, iA2)) || throw(DimensionMismatch())
-        end
-    end
-    indsA = TT.sort(indCinA)
-    perm = TT.sortperm(indCinA)
-    maskC = in_out(A, indsA) .== in_out(C, perm)
-    for (m, iA, iC) in zip(maskC, indsA, perm) #trace in A
-        if m
-            charges(A, iA) == charges(C, iC) || throw(ArgumentError("charges don't agree"))
-            sizes(A, iA) == sizes(C, iC) || throw(DimensionMismatch())
-        else
-            if A isa ZNTensor
-                charges(A, iA) == charges(C, iC) || throw(ArgumentError("charges don't agree"))
-            else
-                charges(A, iA) == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
-            end
-
-            sizes(A, iA) == reverse(sizes(C, iC)) || throw(DimensionMismatch())
-        end
-    end
-    maskAarr = tuple([ifelse(b,1,-1) for b in maskA]...)
-    maskCarr = tuple([ifelse(b,1,-1) for b in maskC]...)
-    if A isa ZNTensor
-        maskAfun = x -> tuple((mod.(maskAarr .* x, _znhelper(A)))...)
-        maskCfun = x -> tuple((mod.(maskCarr .* x, _znhelper(A)))...)
-    else
-        maskAfun = x -> tuple((maskAarr .* x)...)
-        maskCfun = x -> tuple((maskCarr .* x)...)
-    end
-    return (maskAfun, maskCfun)
-end
-
-function trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}}, β, C::DASTensor{S,M},
-                indCinA, cindA1, cindA2) where {T,N,S,M,CA}
-    #conditions
-    maskAfun, maskCfun = _errorstrace(A, cindA1, cindA2, C, indCinA)
-
-    perm = TT.sortperm(indCinA)
-    sectors = filter(x -> isequal(maskAfun(TT.getindices(x, cindA1)),
-                                           TT.getindices(x, cindA2)),
-                        collect(keys(A)))
-    newsectors = map(x -> maskCfun(TT.permute(TT.deleteat(x, TT.vcat(cindA1, cindA2)),perm)),
-                     sectors)
-    passedset = Set{}()
-    sizehint!(tensor(C), length(tensor(C)) + length(newsectors))
-    for (sector, newsector) in zip(sectors, newsectors)
-        array = A[sector]
-        if haskey(tensor(C), newsector)
-            if !in(newsector, passedset)
-                trace!(α, array, Val{CA}, β, C[newsector], indCinA, cindA1, cindA2)
-                push!(passedset, newsector)
-            else
-                trace!(α, array, Val{CA}, 1, C[newsector], indCinA, cindA1, cindA2)
-            end
-        else
-            C[newsector] = similar_from_indices(T, indCinA, array)
-            trace!(α, array, Val{CA}, 0, C[newsector], indCinA, cindA1, cindA2)
-            push!(passedset, newsector)
-        end
-    end
-    return C
-end
-trace!(α, A::DASTensor, CA, β, C::DASTensor, p1, p2, cindA1, cindA2) =
-    trace!(α, A, CA, β, C, (p1..., p2...), cindA1, cindA2)
-
-function _getnewsector(sectorA, sectorB, oindA, oindB, indCinoAB)
-    TT.permute(TT.vcat(
-        TT.getindices(sectorA, oindA),
-        TT.getindices(sectorB, oindB)),
-        indCinoAB)
-end
-
-function _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
-    length(cindA) == length(cindB) || throw(ArgumentError("indices to contract don't pair up"))
-    length(oindA) + length(oindB) == length(indCinoAB) || throw(ArgumentError("indices to contract don't pair up"))
-    _invert(a::UnitRange) = (-a.stop):(-a.start)
-    _znhelper(A::ZNTensor{TA,NA,M}) where {TA,NA,M} = M
-    maskB = in_out(A,cindA) .== -1 .* in_out(B,cindB)
-    for (m, iA, iB) in zip(maskB, cindA, cindB)
-        if m
-            charges(A,iA) == charges(B,iB) || throw(ArgumentError("charges don't agree"))
-            sizes(A,iA) == sizes(B,iB) || throw(DimensionMismatch())
-        else
-            if A isa ZNTensor
-                charges(A,iA) == charges(B,iB) || throw(ArgumentError("charges don't agree"))
-            else
-                charges(A,iA) == _invert(charges(B,iB)) || throw(ArgumentError("charges don't agree"))
-            end
-            sizes(A,iA) == reverse(sizes(B,iB)) || throw(DimensionMismatch())
-        end
-    end
-    ioAB  = TT.vcat(in_out(A, oindA), in_out(B, oindB))
-    chsAB = TT.vcat(charges(A, oindA), charges(B, oindB))
-    dsAB  = TT.vcat(sizes(A, oindA), sizes(B, oindB))
-    maskAB = TT.getindices(ioAB,indCinoAB) .== in_out(C)
-    for (m, iAB, iC) in zip(maskB, indCinoAB, 1:length(indCinoAB))
-        if m
-            chsAB[iAB] == charges(C, iC)|| throw(ArgumentError("charges don't agree"))
-            dsAB[iAB] == sizes(C,iC) || throw(DimensionMismatch())
-        else
-            if A isa ZNTensor
-                chsAB[iAB] == charges(C, iC) || throw(ArgumentError("charges don't agree"))
-            else
-                chsAB[iAB] == _invert(charges(C, iC)) || throw(ArgumentError("charges don't agree"))
-            end
-            dsAB[iAB] == reverse(sizes(C,iC)) || throw(DimensionMismatch())
-        end
-    end
-    maskBarr = tuple([ifelse(b,1,-1) for b in maskB]...)
-    maskABarr = tuple([ifelse(b,1,-1) for b in maskAB]...)
-    if A isa ZNTensor
-        maskBfun = x -> tuple((mod.(maskBarr .* x, _znhelper(A)))...)
-        maskABfun = x -> tuple((mod.(maskABarr .* x, _znhelper(A)))...)
-    else
-        maskBfun = x -> tuple((maskBarr .* x)...)
-        maskABfun = x -> tuple((maskABarr .* x)...)
-    end
-    return (maskBfun, maskABfun)
-end
-
-function contract!(α, A::DASTensor{TA,NA}, ::Type{Val{CA}},
-                      B::DASTensor{TB,NB}, ::Type{Val{CB}}, β,
-                      C::DASTensor{TC,NC}, oindA, cindA, oindB, cindB,
-                      indCinoAB, ::Type{Val{M}}=Val{:native}) where
-                      {TA,NA,TB,NB,TC,NC,CA,CB,M}
-    #conditions
-    maskBfun, maskABfun = _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
-
-    oinAB = TT.vcat(oindA, .+(oindB, NA))
-    indCinAB = TT.getindices(oinAB, indCinoAB)
-    secsA = groupby(x -> TT.getindices(x, cindA), keys(A))
-    secsB = groupby(x -> maskBfun(TT.getindices(x, cindB)), keys(B))
-    # collect sectors that contract with each other
-    secsAB = intersect(keys(secsA), keys(secsB))
-    passedset = Set()
-    for sector in secsAB
-        for secA in secsA[sector], secB in secsB[sector]
-            newsector = maskABfun(_getnewsector(secA, secB, oindA, oindB, indCinoAB))
-            if haskey(tensor(C), newsector)
-                if !in(newsector, passedset) #firstpass
-                    push!(passedset, newsector)
-                    contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
-                              β, C[newsector],
-                              oindA, cindA, oindB, cindB, indCinoAB, Val{M})
-                else
-                    contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
-                              1, C[newsector],
-                              oindA, cindA, oindB, cindB, indCinoAB, Val{M})
-                 end
-             else
-                C[newsector] = similar_from_indices(TC, oindA, oindB, indCinoAB, (),
-                                    A[secA], B[secB], Val{:N}, Val{:N})
-
-                contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
-                          0, C[newsector],
-                          oindA, cindA, oindB, cindB, indCinoAB, Val{M})
-                push!(passedset, newsector)
-             end
-         end
-     end
-     return C
- end
-
-contract!(α, A::DASTensor, CA, B::DASTensor, CB, β, C::DASTensor,
-    oindA, cindA, oindB, cindB, p1, p2, method::Type{<:Val} = Val{:BLAS}) =
-    contract!(α, A, CA, B, CB, β, C, oindA, cindA, oindB, cindB, (p1..., p2...), method)
-
-#= Reshaping =#
-#== Fusion ==#
-function fusiondict(A::T, indexes::NTuple{N,Int}, ld::Int) where {T<:DASTensor,N}
-    #=
-    fdict: oldcharges → newcharge & indices
-    ddict: newcharges → dimension
-    sdict: newcharges → [oldcharges & indices]
-    =#
-    sdict = Dict{Int,Vector{Tuple{NTuple{N,Int},UnitRange}}}()
-    fdict = Dict{NTuple{N,Int},Tuple{Int,UnitRange}}()
-    ddict = Dict{Int,Int}()
-    ochs = charges(A, indexes)
-    oios = in_out(A, indexes)
-    ods  = sizes(A, indexes)
-
-    for chs in Iterators.product(ochs...)
-        nch = fusecharges(T, oios, ld)(chs)
-        if !haskey(sdict, nch)
-            sdict[nch] = []
-            ddict[nch] = 0
-        end
-        d = prod((ods[i][findfirst(==(ch), ochs[i])] for (i,ch) in enumerate(chs)))
-        push!(sdict[nch], (chs, (1:d) .+ ddict[nch]))
-        fdict[chs] = (nch, sdict[nch][end][2])
-        ddict[nch] += d
-    end
-    return (fdict, ddict, sdict)
-end
-
-function fusiondict(A::T, i::Int, ld::Int) where {T<:DASTensor}
-    sdict = Dict{Int,Vector{Tuple{Int,UnitRange}}}()
-    fdict = Dict{Int,Tuple{Int,UnitRange}}()
-    ddict = Dict{Int,Int}()
-    for ch in charges(A,i)
-        nch = fusecharges(T, (in_out(A,i),), ld)((ch,))
-        d = chargesize(A,ch,i)
-        sdict[nch] = [(ch,1:d)]
-        fdict[ch] = (nch, 1:d)
-        ddict[nch] = d
-    end
-    return (fdict, ddict, sdict)
-end
-
-function fusiondicts(A, indexes, lds)
-    dicts = [fusiondict(A,i,ld) for (i,ld) in zip(indexes, lds)]
-    return collect(zip(dicts...))
-end
-
-function fusefields(A::T, indexes, lds, ddicts) where {T<:DASTensor}
-    ochs = [charges(A,i) for i in indexes]
-    oios = [in_out(A,i) for i in indexes]
-    newchs = tuple(map((ch,io,ld) -> fusecharge(T,ch,io,ld), ochs, oios, lds)...)
-    newds  = tuple(map((dict,chs) -> [dict[ch] for ch in chs], ddicts, newchs)...)
-    return (newchs, newds, lds)
-end
-
-
-fuselegs(A::T, indexes) where {T<:DASTensor} =
-    fuselegs(A, indexes, ntuple(i -> 1,length(indexes)))
-function fuselegs(A::T, indexes, lds::NTuple{M,Int}) where {T<:DASTensor{S,N}, M} where {S,N}
-    _pick(sector, i::Int) = sector[i]
-    _pick(sector, i::NTuple) = TT.getindices(sector, i)
-
-    fdicts, ddicts, sdicts = fusiondicts(A, indexes, lds)
-    newfields = fusefields(A, indexes, lds, ddicts)
-    perm = TT.vcat(indexes...)
-    isperm(perm) || throw(ArgumentError("not valid specification of indexes"))
-
-    ntensor = Dict{NTuple{M,Int},Array{S,M}}()
-    for (sector, degeneracy) in tensor(A)
-        tuples = map((i, fdict) -> fdict[_pick(sector, i)], indexes, fdicts)
-        nsector, nranges = collect(zip(tuples...))
-        if !haskey(ntensor, nsector)
-            ntensor[nsector] = zeros(S, map(getindex, ddicts, nsector)...)
-        end
-        s = size(degeneracy)
-        dims = map(i -> prod(s[vec(collect(i))]), indexes)
-        ntensor[nsector][nranges...] = reshape(permutedims(degeneracy, perm), dims...)
-    end
-    _totuple(x) = ifelse(x isa Tuple, x, (x,))
-    ochs = [_totuple(charges(A, i)) for i in indexes]
-    oios = [_totuple(in_out(A, i))  for i in indexes]
-    ods  = [_totuple(sizes(A, i))   for i in indexes]
-    inverter = (ochs, oios, ods, sdicts)
-    return (constructnew(T, newfields, ntensor), inverter)
-end
-
-
-#== Splitting ==#
-function splitlegs(A::T, inds::NTuple{M,Union{Int,NTuple{3,Int}}}, inverter) where {M,T<:DASTensor{S}} where S
-    nchs, nios, ndims, sdicts = inverter
-    cchs, cdims = charges(A), sizes(A)
-    ntensor = Dict{NTuple{M,Int},Array{S,M}}()
-    rinds, iperm, perm = _reduceinds(inds)
-    for (sector, degen) in tensor(A)
-        nsecs, nranges = _splitsec(sector,rinds,sdicts)
-        for (nsec, nrange) in zip(nsecs, nranges)
-            dims = _splitsdims((sector, cchs, cdims), (nsec, nchs,ndims), inds, perm)
-            nsec = TT.getindices(nsec, iperm)
-            ntensor[nsec] = copy(permutedims(reshape(view(degen, nrange...),
-                                        dims...), iperm) )
-        end
-    end
-    _pick(i::Int, current, old)  = current[i]
-    _pick((l,m,n), current, old) = old[m][n]
-    newchs = tuple([_pick(i, charges(A), nchs) for i in inds]...)
-    newios = tuple([_pick(i, in_out(A), nios)  for i in inds]...)
-    newds  = tuple([_pick(i, sizes(A), ndims)    for i in inds]...)
-    return constructnew(T, (newchs,newds,newios), ntensor)
-end
-
-function _splitsec(sector, inds, sdicts)
-    _pick(i::Int) = ((sector[i], :),)
-    _pick((l,m,n)) = sdicts[m][sector[l]]
-    nseccharges = [_pick(i) for i in inds]
-    nsecs = []
-    nranges = []
-    for ns in Iterators.product(nseccharges...)
-        push!(nsecs, TT.vcat([s[1] for s in ns]...))
-        push!(nranges, [s[2] for s in ns])
-    end
-    return (nsecs, nranges)
-end
-
-function _splitsdims((sector, cchs, cdims), (nsec, nchs, ndims), inds, perm)
-    _pick(i::Int, k)  = cdims[i][findfirst(==(sector[i]), cchs[i])]
-    _pick((l,m,n), k) = ndims[m][n][findfirst(==(nsec[k]), nchs[m][n])]
-    [_pick(i,k) for (k,i) in enumerate(TT.getindices(inds,perm))]
-end
-
-function _reduceinds(inds)
-    rinds = tuple(sort(unique(first, inds), by=first)...)
-    tinds = map(i -> ifelse(i isa Int, (i,), i), inds)
-    perm  = TT.sortperm(tinds)
-    iperm = TT.invperm(perm)
-    return (rinds, iperm, perm)
-end
-
-#= Functions =#
-function tensorsvd(A::T; svdcutfunction = svdcutfun_default) where {T <: DASTensor{Q,N}} where {Q,N}
-    N == 2 || throw(ArgumentError("SVD only works on rank 2 tensors"))
-    tU = Dict{NTuple{N,Int},Array{Q,N}}()
-    tS = Dict{NTuple{N,Int},Array{Q,N}}()
-    tV = Dict{NTuple{N,Int},Array{Q,N}}()
-
-    lch = connectingcharge(T, charges(A), in_out(A), charge(A))
-    ld =  sizes(A,2)[[c in lch for c in charges(A,2)]]
-
-    chU = (charges(A,1), lch)
-    dU  = deepcopy.((sizes(A,1), ld))
-    ioU = in_out(A)
-
-    chS = (lch, lch)
-    dS  =  deepcopy.((ld,ld))
-    ioS = (-in_out(A,2), in_out(A,2))
-
-    chV = (lch, charges(A,2))
-    dV  =  deepcopy.((ld,sizes(A,2)))
-    ioV = (-in_out(A,2), in_out(A,2))
-
-    for ((in, out), degen) in tensor(A)
-        tU[(in, out)], tS[(out, out)], tV[(out, out)], cutoff =
-            _tensorsvd(degen, svdcutfunction = svdcutfunction, helper = true)
-        dU[2][findfirst(==(out), chU[2])] = cutoff
-        dS[1][findfirst(==(out), chS[1])] = cutoff
-        dS[2][findfirst(==(out), chS[2])] = cutoff
-        dV[1][findfirst(==(out), chV[1])] = cutoff
-    end
-    U = constructnew(T, (chU, dU, ioU), tU)
-    S = constructnew(T, (chS, dS, ioS), tS)
-    V = constructnew(T, (chV, dV, ioV), tV)
-    return (U, S, V)
-end
-
-function tensorsvd(A::DASTensor, indexes; svdcutfunction = svdcutfun_default)
-    fA, inverter = fuselegs(A, indexes)
-    U, S, Vt = tensorsvd(fA, svdcutfunction=svdcutfunction)
-    li1 = length(indexes[1])
-    if indexes[1] isa Tuple
-        indxs = (ntuple(x -> (1,1,x), li1)..., 2)
-        U = splitlegs(U, indxs, inverter)
-    end
-    li2 = length(indexes[2])
-    if indexes[2] isa Tuple
-        indxs = (1, ntuple(x -> (2,2,x), li2)...)
-        Vt = splitlegs(Vt, indxs, inverter)
-    end
-    return (U,S,Vt)
-end
-
-function _tensorsvd(A::AbstractArray; svdcutfunction = svdcutfun_default,
-        helper::Bool = false)
-    F = svd(A)
-    svals = F.S
-    cutoff = svdcutfunction(svals)
-    U = F.U[:, 1:cutoff]
-    S = diagm(0=>svals[1:cutoff])
-    Vt = F.Vt[1:cutoff, :]
-    helper && return (U, S, Vt, cutoff)
-    return (U, S, Vt)
-end
-
-
-function connectingcharge(::Type{<:U1Tensor}, (ch1,ch2), (io1,io2), charge)
-    _invertcharge(a::UnitRange) = (-a.stop):(-a.start)
-    # ch1→[A]→ch2
-    ch1 = ifelse(io1 ==  1, _invertcharge(ch1), ch1) .- charge
-    ch2 = ifelse(io2 == -1, _invertcharge(ch2), ch2)
-    ch3 = intersect(ch1, ch2)
-    io2 == -1 && return _invertcharge(ch3)
-    return ch3
-end
-
-function connectingcharge(::Type{<:ZNTensor}, (ch1,ch2), ios, charge)
-    ch1 == ch2 || throw(ArgumentError("illegal connection: $ch1↔$ch2"))
-    return ch1
-end
-
-svdcutfun_default = length
-svdcutfun_discardzero = x -> length(filter(!iszero, x))
-svdcutfun_maxχ(χ) = x -> min(length(x), χ)
-svdcutfun_maxcumerror(ϵ; χ::Int = Inf64) = x -> _maxcumerror(x, ϵ, χ)
-svdcutfun_maxerror(ϵ; χ::Int = Inf64) = x -> _maxerror(x, ϵ, χ)
-
-function _maxcumerror(xs, ϵ, χ)
-    cs = reverse(cumsum(reverse(xs)))
-    index = findfirst(x -> x < ϵ, cs)
-    index == nothing && return min(length(xs), χ)
-    return min(index-1, χ)
-end
-
-function _maxerror(xs, ϵ, χ)
-    index = findfirst(x -> x < ϵ, xs)
-    index == nothing && return min(length(xs), χ)
-    return min(index-1, χ)
-end
+include("tensoroperations.jl")
+include("splitfuse.jl")
