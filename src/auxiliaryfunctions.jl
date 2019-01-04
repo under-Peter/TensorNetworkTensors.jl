@@ -1,17 +1,14 @@
 function groupby(f::Function, xs)
     # maintain order in xs
-    dict = Dict()
+    y = f(first(xs))
+    T = eltype(xs)
+    dict = Dict{typeof(y), Vector{T}}()
     for x in xs
         y = f(x)
-        if haskey(dict,y)
-            push!(dict[y],x)
-        else
-            dict[y] = [x]
-        end
+        haskey(dict, y) || (dict[y] = T[])
+        push!(dict[y], x)
     end
     return dict
 end
 
-function gatherby(f::Function, xs)
-    return collect(values(groupby(f,xs)))
-end
+gatherby(f::Function, xs) = collect(values(groupby(f,xs)))
