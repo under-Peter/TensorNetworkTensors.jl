@@ -1,17 +1,60 @@
-TensorOperations.numind(A::DASTensor{T,N}) where {T,N} = N
-TensorOperations.scalar(a::DASTensor) = scalar(first(values(a)))
+#DTensor
+TO.scalar(A::DTensor)  = TO.scalar(A.array)
+TO.numind(A::DTensor{T,N}) where {T,N} = N
+TO.similar_from_indices(T::Type, indices, A::DTensor, ::Type{<:Val}=Val{:N}) =
+    DTensor(TO.similar_from_indices(T, indices, A.array, Val{:N}))
 
-TensorOperations.similar_from_indices(T::Type, p1::Tuple, p2::Tuple, A::DASTensor, CA::Type{<:Val}) =
-    TensorOperations.similar_from_indices(T, (p1...,p2...), A, CA)
+TO.similar_from_indices(T::Type, poA, poB, p1, p2, A::DTensor, B::DTensor, CA, CB) =
+    DTensor(TO.similar_from_indices(T, poA, poB, p1, p2, A.array, B.array, CA, CB))
 
-function TensorOperations.similar_from_indices(S::Type, index::NTuple{M,Int},
+TO.similar_from_indices(T::Type, index, A::DTensor, B::DTensor,
+    ::Type{Val{CA}} = Val{:N}, ::Type{Val{CB}} = Val{:N}) where
+    {CA,CB} = DTensor(TO.similar_from_indices(T, index, A.array, B.array, Val{CA}, Val{CB}))
+
+TO.similar_from_indices(T::Type, p1::Tuple, p2, A::DTensor, CA::Type{<:Val}) =
+ DTensor(TO.similar_from_indices(T, (p1...,p2...), A.array, CA))
+
+TO.add!(α, A::DTensor{T,N}, CA::Type{<:Val}, β, C::DTensor{S,M},
+    p1, p2) where {T,N,S,M} = TO.add!(α, A, CA, β, C, (p1..., p2...))
+
+TO.add!(α, A::DTensor{T,N}, ::Type{Val{CA}}, β, C::DTensor{S,M}, indCinA) where
+    {CA,T,N,S,M} = DTensor(TO.add!(α, A.array, Val{CA}, β, C.array, indCinA))
+
+TO.add!(α, A::DTensor, CA::Type{<:Val}, β, C::DTensor, p1::Tuple, p2::Tuple) =
+    TO.add!(α, A, CA, β, C, (p1...,p2...))
+
+TO.trace!(α, A::DTensor, CA::Type{<:Val}, β, C::DTensor, p1, p2, cindA1, cindA2) =
+    TO.trace!(α, A, CA, β, C, (p1..., p2...), cindA1, cindA2)
+TO.trace!(α, A::DTensor, ::Type{Val{CA}}, β, C::DTensor, indCinA, cindA1, cindA2) where
+    {CA} = DTensor(TO.trace!(α, A.array, Val{CA}, β, C.array, indCinA, cindA1, cindA2))
+
+TO.contract!(α, A::DTensor, ::Type{Val{CA}}, B::DTensor, ::Type{Val{CB}}, β,
+    C::DTensor, oindA, cindA, oindB, cindB, indCinoAB,
+     ::Type{Val{M}} = Val{:BLAS}) where {CA,CB,M} =
+    DTensor(TO.contract!(α, A.array, Val{CA}, B.array, Val{CB},
+                         β, C.array, oindA, cindA, oindB, cindB,
+                         indCinoAB, Val{M}))
+
+TO.contract!(α, A::DTensor, CA::Type{<:Val}, B::DTensor, CB::Type{<:Val}, β,
+                C::DTensor, oindA, cindA, oindB, cindB, p1, p2,
+                method::Type{<:Val} = Val{:BLAS}) =
+    TO.contract!(α, A, CA, B, CB, β, C, oindA, cindA, oindB, cindB, (p1..., p2...), method)
+
+#DASTensor
+TO.scalar(a::DASTensor) = TO.scalar(first(values(a)))
+TO.numind(::DASTensor{<:Any,N}) where N = N
+
+TO.similar_from_indices(T::Type, p1::Tuple, p2::Tuple, A::DASTensor, CA::Type{<:Val}) =
+    TO.similar_from_indices(T, (p1...,p2...), A, CA)
+
+function TO.similar_from_indices(S::Type, index::NTuple{M,Int},
         A::DASTensor{T,N,SYM}, ::Type{Val{CA}} = Val{:N}) where {M,T,N,SYM, CA}
         dims = CA == :N ? sizes(A,index)  : map(reverse,sizes(A,index))
         ios  = CA == :N ? in_out(A,index) : inv(in_out(A,index))
     return DASTensor{S,M}(SYM, charges(A,index), deepcopy(dims), ios)
 end
 
-function TensorOperations.similar_from_indices(T::Type, index::NTuple{N,Int},
+function TO.similar_from_indices(T::Type, index::NTuple{N,Int},
             A::DASTensor{TA,NA,SYM}, B::DASTensor{TB,NB,SYM},
             ::Type{Val{CA}} = Val{:N}, ::Type{Val{CB}} = Val{:N}) where
                 {N,TA,NA,TB,NB,SYM,CA,CB}
@@ -24,7 +67,7 @@ function TensorOperations.similar_from_indices(T::Type, index::NTuple{N,Int},
     return DASTensor{T,N}(SYM, chs, deepcopy(dims), io)
  end
 
-function TensorOperations.similar_from_indices(T::Type, poA, poB, p1, p2,
+function TO.similar_from_indices(T::Type, poA, poB, p1, p2,
         A::DASTensor{TA,NA,SYM}, B::DASTensor{TB,NB,SYM},
         ::Type{Val{CA}} = Val{:N},
         ::Type{Val{CB}} = Val{:N}) where {TA,NA,TB,NB,SYM,CA,CB}
@@ -54,24 +97,24 @@ function _errorsadd(A::DASTensor{T,N,SYM}, C, perm::NTuple{M}) where {T,N,SYM,M}
     return ⊗(modio)
 end
 
-function TensorOperations.add!(α::Number, A::DASTensor{T,N}, ::Type{Val{CA}},
+function TO.add!(α::Number, A::DASTensor{T,N}, ::Type{Val{CA}},
      β::Number, C::DASTensor{S,N}, indCinA) where {T,S,N,CA}
     perm = TT.sortperm(indCinA)
     maskfun = _errorsadd(A, C, perm)
     for (sector, degeneracy) in tensor(A)
         permsector = permute(maskfun(sector), perm)
         if haskey(tensor(C), permsector)
-            TensorOperations.add!(α, degeneracy, Val{CA}, β, C[permsector], indCinA)
+            TO.add!(α, degeneracy, Val{CA}, β, C[permsector], indCinA)
         else
-            C[permsector] = TensorOperations.similar_from_indices(T, indCinA, degeneracy)
-            TensorOperations.add!(α, degeneracy, Val{CA}, 0, C[permsector], indCinA)
+            C[permsector] = TO.similar_from_indices(T, indCinA, degeneracy)
+            TO.add!(α, degeneracy, Val{CA}, 0, C[permsector], indCinA)
         end
     end
     return C
 end
 
-TensorOperations.add!(α, A::DASTensor, CA, β, C::DASTensor, p1, p2) =
-    TensorOperations.add!(α, A, CA, β, C, (p1...,p2...))
+TO.add!(α, A::DASTensor, CA, β, C::DASTensor, p1, p2) =
+    TO.add!(α, A, CA, β, C, (p1...,p2...))
 
 
 function _errorstrace(A::DASTensor{T,N,<:Any},
@@ -101,7 +144,7 @@ function _errorstrace(A::DASTensor{T,N,<:Any},
     return (⊗(maskAio), ⊗(maskCio))
 end
 
-function TensorOperations.trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}},
+function TO.trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}},
                                 β, C::DASTensor{S,M},
                                 indCinA, cindA1, cindA2) where {T,N,S,M,CA}
     #conditions
@@ -116,22 +159,22 @@ function TensorOperations.trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}},
         newsector = maskCfun(permute(deleteat(sector, cinds),perm))
         if haskey(C, newsector)
             if !in(newsector, passedset)
-                TensorOperations.trace!(α, A[sector], Val{CA}, β, C[newsector], indCinA, cindA1, cindA2)
+                TO.trace!(α, A[sector], Val{CA}, β, C[newsector], indCinA, cindA1, cindA2)
                 push!(passedset, newsector)
             else
-                TensorOperations.trace!(α, A[sector], Val{CA}, 1, C[newsector], indCinA, cindA1, cindA2)
+                TO.trace!(α, A[sector], Val{CA}, 1, C[newsector], indCinA, cindA1, cindA2)
             end
         else
-            C[newsector] = TensorOperations.similar_from_indices(T, indCinA, A[sector])
-            TensorOperations.trace!(α, A[sector], Val{CA}, 0, C[newsector], indCinA, cindA1, cindA2)
+            C[newsector] = TO.similar_from_indices(T, indCinA, A[sector])
+            TO.trace!(α, A[sector], Val{CA}, 0, C[newsector], indCinA, cindA1, cindA2)
             push!(passedset, newsector)
         end
     end
     return C
 end
 
-TensorOperations.trace!(α, A::DASTensor, CA, β, C::DASTensor, p1, p2, cindA1, cindA2) =
-    TensorOperations.trace!(α, A, CA, β, C, (p1..., p2...), cindA1, cindA2)
+TO.trace!(α, A::DASTensor, CA, β, C::DASTensor, p1, p2, cindA1, cindA2) =
+    TO.trace!(α, A, CA, β, C, (p1..., p2...), cindA1, cindA2)
 
 function _errorscontract(A::DASTensor{TA,NA,<:Any},
                         (oindA, cindA)::Tuple{NTuple{NoA,Int}, NTuple{CoA,Int}},
@@ -167,7 +210,7 @@ function _errorscontract(A::DASTensor{TA,NA,<:Any},
     return (⊗(maskBio), ⊗(maskABio))
 end
 
-function TensorOperations.contract!(α, A::DASTensor{TA,NA,SYM}, ::Type{Val{CA}},
+function TO.contract!(α, A::DASTensor{TA,NA,SYM}, ::Type{Val{CA}},
                       B::DASTensor{TB,NB,SYM}, ::Type{Val{CB}}, β,
                       C::DASTensor{TC,NC,SYM}, oindA, cindA, oindB, cindB,
                       indCinoAB, ::Type{Val{M}}=Val{:native}) where
@@ -189,19 +232,19 @@ function TensorOperations.contract!(α, A::DASTensor{TA,NA,SYM}, ::Type{Val{CA}}
             if haskey(C, newsector)
                 if !in(newsector, passedset) #firstpass
                     push!(passedset, newsector)
-                    TensorOperations.contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
+                    TO.contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
                               β, C[newsector],
                               oindA, cindA, oindB, cindB, indCinoAB, Val{M})
                 else
-                    TensorOperations.contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
+                    TO.contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
                               1, C[newsector],
                               oindA, cindA, oindB, cindB, indCinoAB, Val{M})
                  end
              else
-                C[newsector] = TensorOperations.similar_from_indices(TC, oindA, oindB, indCinoAB, (),
+                C[newsector] = TO.similar_from_indices(TC, oindA, oindB, indCinoAB, (),
                                     A[secA], B[secB], Val{:N}, Val{:N})
 
-                TensorOperations.contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
+                TO.contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
                           0, C[newsector],
                           oindA, cindA, oindB, cindB, indCinoAB, Val{M})
                 push!(passedset, newsector)
@@ -211,6 +254,6 @@ function TensorOperations.contract!(α, A::DASTensor{TA,NA,SYM}, ::Type{Val{CA}}
      return C
  end
 
-TensorOperations.contract!(α, A::DASTensor, CA, B::DASTensor, CB, β, C::DASTensor,
+TO.contract!(α, A::DASTensor, CA, B::DASTensor, CB, β, C::DASTensor,
     oindA, cindA, oindB, cindB, p1, p2, method::Type{<:Val} = Val{:BLAS}) =
-    TensorOperations.contract!(α, A, CA, B, CB, β, C, oindA, cindA, oindB, cindB, (p1..., p2...), method)
+    TO.contract!(α, A, CA, B, CB, β, C, oindA, cindA, oindB, cindB, (p1..., p2...), method)

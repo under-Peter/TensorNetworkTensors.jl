@@ -1,238 +1,724 @@
-using TNTensors, Test
-using TensorOperations: @tensor, tensoradd, tensortrace, tensorcontract, scalar
-using Random: randperm
-const ntype = ComplexF64
-const u1chs = -1:1
-const u1ds = [2,1,2]
-testequality(fun, tensor) = @test todense(fun(tensor)) ≈ fun(todense(tensor))
-testequality(fun) = x -> testequality(fun, x)
-randu(io::NTuple{N}) where N = rand(U1Tensor{ntype,N}, ntuple(x -> u1chs, N), ntuple(x -> u1ds, N), io)
-randz(io::NTuple{N}) where N = rand(ZNTensor{ntype,N,2}, ntuple(x -> [1,2], N), io)
-u1tensors = map(randu, (fill(1,i)...,fill(-1,i)...) for i in 1:4)
-zntensors = map(randz, (fill(1,i)...,fill(-1,i)...) for i in 1:4)
-
-testaddition(x::AbstractTensor{T,N}) where {T,N} = tensoradd(x, ntuple(identity,N), x, ntuple(identity,N))
-testtrace(x::AbstractTensor{T,N}) where {T,N} =
-    tensortrace(x, (ntuple(identity, div(N,2))...,
-                    ntuple(identity, div(N,2))...))
-testptrace(x::AbstractTensor{T,N}) where {T,N} =
-    tensortrace(x, (1,(2:N-1)...,1))
-testcontractblas(x::AbstractTensor{T,N}) where {T,N} =
-    tensorcontract(x,collect(1:N),x,collect(N:-1:1))
-testcontractnative(x::AbstractTensor{T,N}) where {T,N} =
-    tensorcontract(x,collect(1:N),x,collect(N:-1:1),method=:native)
+# using TNTensors
+using Test
+using TensorOperations: @tensor
+using LinearAlgebra
 
 @testset "U1Tensor" begin
-    map(testequality(testaddition), u1tensors)
-    map(testequality(testtrace), u1tensors)
-    map(testequality(testptrace), u1tensors)
-    map(testequality(testcontractblas), u1tensors)
-    map(testequality(testcontractnative), u1tensors)
-end
+    u1chs, u1ds, io = U1Charges(-2:2), fill(2,5), InOut(-1,1)
+    @testset "Initialization" begin
+        a = DASTensor{Float64,2}(U1(), (u1chs, u1chs), (u1ds, u1ds), io)
 
-@testset "ZNTensor" begin
-    map(testequality(testaddition), zntensors)
-    map(testequality(testtrace), zntensors)
-    map(testequality(testptrace), zntensors)
-    map(testequality(testcontractblas), zntensors)
-    map(testequality(testcontractnative), zntensors)
-end
-
-@testset "SplitFuse" begin
-    au1 = rand(U1Tensor{ComplexF64,3}, (-2:2,-1:1,-2:2),
-        ([3,2,1,4,5],[2,1,3],[3,2,1,2,3]),(1,1,-1))
-    bu1, = fuselegs(au1,((1,2),3),(1,-1));
-    cu1, = fuselegs(au1,(1,(2,3)),(-1,-1));
-    du1, = fuselegs(au1,((3,2),1),(1,-1));
-    eu1, = fuselegs(du1,((2,1),),(1,));
-    @tensor begin
-         ra[] := au1[1,2,3] * au1'[1,2,3]
-         rb[] := bu1[1,2] * bu1'[1,2]
-         rc[] := cu1[1,2] * cu1'[1,2]
-         rd[] := du1[1,2] * du1'[1,2]
-         re[] := eu1[1] * eu1'[1]
-    end;
-    @test scalar(ra) ≈ scalar(rb) ≈ scalar(rc) ≈ scalar(rd) ≈ scalar(re)
-
-    az2 = rand(ZNTensor{ComplexF64,3,2}, (0:1,0:1,0:1),
-        ([1,3],[4,2],[5,2]),(1,1,-1))
-    bz2, = fuselegs(az2,((1,2),3),(1,1));
-    cz2, = fuselegs(az2,(1,(2,3)),(1,1));
-    dz2, = fuselegs(az2,((3,2),1),(1,-1));
-    ez2, = fuselegs(dz2,((2,1),),(1,));
-    @tensor begin
-         ra[] := az2[1,2,3] * az2'[1,2,3]
-         rb[] := bz2[1,2] * bz2'[1,2]
-         rc[] := cz2[1,2] * cz2'[1,2]
-         rd[] := dz2[1,2] * dz2'[1,2]
-         re[] := ez2[1] * ez2'[1]
-    end;
-    @test scalar(ra) ≈ scalar(rb) ≈ scalar(rc) ≈ scalar(rd) ≈ scalar(re)
-
-    az3 = rand(ZNTensor{ComplexF64,3,3}, (0:2,0:2,0:2),
-        ([1,3,6],[4,2,2],[5,2,3]),(1,1,-1))
-    bz3, = fuselegs(az3,((1,2),3),(1,1));
-    cz3, = fuselegs(az3,(1,(2,3)),(1,1));
-    dz3, = fuselegs(az3,((3,2),1),(1,-1));
-    ez3, = fuselegs(dz3,((2,1),),(1,));
-    @tensor begin
-         ra[] := az3[1,2,3] * az3'[1,2,3]
-         rb[] := bz3[1,2] * bz3'[1,2]
-         rc[] := cz3[1,2] * cz3'[1,2]
-         rd[] := dz3[1,2] * dz3'[1,2]
-         re[] := ez3[1] * ez3'[1]
-    end;
-    @test scalar(ra) ≈ scalar(rb) ≈ scalar(rc) ≈ scalar(rd) ≈ scalar(re)
-end
-
-@testset "splitting" begin
-    a = rand(U1Tensor{ComplexF64,3},
-            (-1:1,-1:1,-1:1),
-            ([2,1,3],[4,1,2],[2,5,2]),
-            (-1,1,-1));
-    b, inverter = fuselegs(a, (1,(2,3)), (-1,-1));
-    a2 = splitlegs(b, (1,(2,2,1),(2,2,2)), inverter)
-    @test a2 == a
-    b, inverter = fuselegs(a, (1, (3,2)), (1,-1));
-    @test a == splitlegs(b, ((1,1,1),(2,2,2),(2,2,1)), inverter)
-
-    a = rand(U1Tensor{ComplexF64,2}, (-2:2,-1:1), ([4,5,1,2,3],[6,1,2]), (1,-1));
-    b, inverter = fuselegs(a, (1,2), (1,1));
-    @test a == splitlegs(b, ((1,1,1),(2,2,1)), inverter)
-    b, inverter = fuselegs(a, (2,1), (1,1));
-    @test a == splitlegs(b, ((2,2,1),(1,1,1)), inverter)
-    splitlegs(splitlegs(b, (2,1), inverter) , (2,1), inverter) == b
-
-    a = rand(ZNTensor{ComplexF64,3,3},
-            (0:2,0:2,0:2),
-            ([1,8,3],[3,2,3],[1,2,6]),
-            (-1,1,-1));
-    b, inverter = fuselegs(a, ((1,2),3), (1,-1));
-    @test a == splitlegs(b, ((1,1,1),(1,1,2),2), inverter)
-    b, inverter = fuselegs(a, (1,(2,3)), (-1,-1));
-    @test a == splitlegs(b, (1,(2,2,1),(2,2,2)), inverter)
-    b, inverter = fuselegs(a, (1, (3,2)), (-1,-1));
-    @test a == splitlegs(b, (1,(2,2,2),(2,2,1)), inverter)
-
-    a = rand(U1Tensor{ComplexF64,2}, (-2:2,-1:1), ([3,2,1,2,3],[2,1,2]), (1,-1));
-    b, inverter = fuselegs(a, (1,2), (1,1));
-    @test splitlegs(splitlegs(b, (2,1), inverter) , (2,1), inverter) == b
+        @test symmetry(a) == U1()
+        @test chargetype(a) == chargetype(U1())
+        @test chargestype(a) == chargestype(U1())
+        @test eltype(a) == Float64
+        @test isempty(tensor(a))
 
 
-    chs = -30:30
-    ds = [5 for c in chs]
-    a = rand(U1Tensor{ComplexF64,3},
-            (chs,chs,chs),
-            (ds,ds,ds),
-            (-1,1,-1));
-    b, inverter = fuselegs(a, (1,(2,3)), (-1,-1));
-    a2 = splitlegs(b, (1,(2,2,1),(2,2,2)), inverter)
-    @test a == a2
-end
+        #Initialize with zeros
+        b0 = initwithzero!(deepcopy(a))
+        @test isinvariant(b0)
+        @tensor bs = b0[1,1]
 
-@testset "TensorSVD" begin
-    chs = -3:3
-    ds = [4 for i in chs]
-    ntype = ComplexF64
-    au1= rand(U1Tensor{ntype,2}, (chs, chs), (ds, ds), (1,-1))
-    u, s, vt = tensorsvd(au1)
-    @tensor au12[1,2] := u[1,-1] * s[-1, -2] * vt[-2,2]
-    @test au12 ≈ au1
+        @test charge(b0) == zero(U1Charge)
+        @test bs == zero(Float64)
 
-    au1= rand(U1Tensor{ntype,2}, (chs, chs), (ds, ds), (-1,-1))
-    u, s, vt = tensorsvd(au1)
-    @tensor au12[1,2] := u[1,-1] * s[-1, -2] * vt[-2,2]
-    @test au12 ≈ au1
 
-    az2 = rand(ZNTensor{ntype,2,2}, ntuple(x -> [1,2], 2), (1,-1))
-    u, s, vt = tensorsvd(az2)
-    @tensor az22[1,2] := u[1,-1] * s[-1, -2] * vt[-2,2]
-    @test az22 ≈ az2
+        #Initialize with rand
+        br = initwithrand!(deepcopy(a))
+        bd = todense(br)
+        @tensor begin
+            sc = br[1,1]
+            scd = bd[1,1]
+        end
 
-    az2 = rand(ZNTensor{ntype,2,2}, ntuple(x -> [1,2], 2), (-1,-1))
-    u, s, vt = tensorsvd(az2)
-    @tensor az22[1,2] := u[1,-1] * s[-1, -2] * vt[-2,2]
-    @test az22 ≈ az2
-
-    az3= rand(ZNTensor{ntype,2,3}, ntuple(x -> [1,2,3], 2), (1,1))
-    u, s, vt = tensorsvd(az3)
-    @tensor az32[1,2] := u[1,-1] * s[-1, -2] * vt[-2,2]
-    @test az32 ≈ az3
-end
-
-@testset "in_out agnosticism" begin
-    for io in [(1,1),(1,-1),(-1,1),(-1,-1)]
-        a = rand(U1Tensor{ComplexF64,4}, (-1:1,-1:1,-1:1,-1:1), ([2,1,2],[2,1,2],[2,1,2],[2,1,2]), (1,1,-1,-1));
-        @tensor ref[] := a[1,2,1,2]
-        io = (1,-1)
-        b = fuselegs(a, ((1,2),(3,4)), io)[1]
-        @tensor c[] := b[1,1]
-        @test c ≈ ref
+        @test sc isa Float64
+        @test scd isa Float64
+        @test sc ≈ scd
     end
 
-    N = 6
-    a = rand(U1Tensor{ComplexF64,N}, tuple([-1:1 for i in 1:N]...), tuple([[2,1,2] for i in 1:N]...), tuple([1 for i in 1:N]...));
-    b = rand(U1Tensor{ComplexF64,N}, tuple([-1:1 for i in 1:N]...), tuple([[2,1,2] for i in 1:N]...), tuple([-1 for i in 1:N]...));
-
-    ref = tensorcontract(a,1:N,b,1:N,())
-    for i in rand(2:N-1,1)
-        for ioa in [(1,1),(1,-1),(-1,1),(-1,-1)], iob in [(1,1),(1,-1),(-1,1),(-1,-1)]
-            inds = randperm(N)
-            i1 = (inds[1:i]...,)
-            i2 = (inds[i+1:end]...,)
-            af = fuselegs(a,(i1,i2),ioa)[1]
-            bf = fuselegs(b,(i1,i2),iob)[1]
-            @test scalar(tensorcontract(af,1:2,bf,1:2,())) ≈ scalar(ref)
+    @testset "TensorOperations" begin
+        f = DASTensor{Complex{Float64},3}(U1(), ntuple(x -> u1chs, 3),
+                 ntuple(x -> u1ds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
+        ##inner product direct
+        @tensor ref = fr[1,2,3] * fr'[1,2,3]
+        ##inner product direct with permutation
+        @test ref ≈ @tensor fr'[2,1,3] * fr[2,1,3]
+        ##outer product then trace
+        @test ref ≈ @tensor begin
+            fr2[1,2,3,4,5,6] := fr[1,2,3] * fr'[4,5,6]
+            fr2[1,2,3,1,2,3]
+        end
+        ##partial contraction then partial trace
+        @test ref ≈ @tensor begin
+            fr3[1,2,3,4] := fr[1,2,-1] * fr'[3,4,-1]
+            fr3[1,2,1,2]
         end
     end
 
-    N = 3
-    a = rand(U1Tensor{ComplexF64,N}, tuple([-1:1 for i in 1:N]...), tuple([[2,1,2] for i in 1:N]...), tuple([1 for i in 1:N]...));
-    b = rand(U1Tensor{ComplexF64,N}, tuple([-1:1 for i in 1:N]...), tuple([[2,1,2] for i in 1:N]...), tuple([-1 for i in 1:N]...));
+    @testset "KrylovKit" begin
+        #compare operations from krylovkit
+        f = DASTensor{Complex{Float64},3}(U1(), ntuple(x -> u1chs, 3),
+                 ntuple(x -> u1ds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
 
-    ref = tensorcontract(a,1:N,b,1:N,())
-    for ioa in Iterators.product([(1,-1) for i in 1:N]...),
-        iob in Iterators.product([(1,-1) for i in 1:N]...)
-        inds = randperm(N)
-        af = fuselegs(a,inds,ioa)[1]
-        bf = fuselegs(b,inds,iob)[1]
-        @test scalar(tensorcontract(af,1:N,bf,1:N,())) ≈ scalar(ref)
+        ##fill!
+        fr0 = fill!(deepcopy(fr), 0)
+        @test all(iszero(v) for v in values(fr0))
+
+        ##mul! -> w = a .* v
+        fr2 = deepcopy(fr)
+        mul!(fr2, fr, 2)
+        @test fr2 ≈ fr * 2
+        mul!(fr2, fr, 1/2)
+        @test fr2 ≈ fr/2
+        mul!(fr2, fr, 1im)
+        @test fr2 ≈ fr * 1im
+
+        ##rmul! w = a .* w
+        fr2 = deepcopy(fr)
+        rmul!(fr2, 2)
+        @test fr2 ≈ fr * 2
+        rmul!(fr2, 0)
+        @test all(iszero(v) for v in values(fr2))
+
+        ##axpy! a,v,w -> w = a * v + w
+        fr2 = deepcopy(fr)
+        axpy!(1,fr, fr2)
+        @test fr2 ≈ 2 * fr
+        axpy!(0,fr, fr2)
+        @test fr2 ≈ 2 * fr
+
+        ##axpby! a,v,b,w -> w = a * v + b * w
+        fr2 = deepcopy(fr)
+        axpby!(1,fr,1,fr2)
+        @test fr2 ≈ 2 * fr
+        initwithrand!(fr2)
+        axpby!(1,fr,0,fr2)
+        @test fr2 ≈ fr
+        initwithrand!(fr2)
+        @tensor frsum[1,2,3] := fr[1,2,3] + fr2[1,2,3]
+        axpby!(1,fr,1,fr2)
+        @test fr2 ≈ frsum
+
+        ##dot, norm
+        f = DASTensor{Complex{Float64},3}(U1(), ntuple(x -> u1chs, 3),
+                 ntuple(x -> u1ds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
+        @tensor ref = fr[1,2,3] * fr'[1,2,3]
+        @test ref ≈ dot(fr,fr)
+        @test ref ≈ norm(fr)^2
+        nfr = fr / norm(fr)
+        @test norm(nfr) ≈ 1
+        @tensor ref = nfr[1,2,3] * conj(nfr)[1,2,3]
     end
-    for io in [(1,1),(1,-1),(-1,1),(-1,-1)]
-        a = rand(ZNTensor{ComplexF64,4,2}, (0:1,0:1,0:1,0:1), ([2,2],[2,2],[2,2],[2,2]), (1,1,-1,-1));
-        @tensor ref[] := a[1,2,1,2]
-        io = (1,-1)
-        b = fuselegs(a, ((1,2),(3,4)), io)[1]
-        @tensor c[] := b[1,1]
-        @test c ≈ ref
+
+    @testset "TensorFactorization" begin
+        ##w/o splitting and fusing
+        ar = DASTensor{Float64,2}(U1(), (u1chs, u1chs), (u1ds, u1ds), io)
+        initwithrand!(ar)
+        ua, sa, vda = tensorsvd(ar)
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        @test ar2 ≈ ar
+        @test sum(diag(sa)) ≈ @tensor sa[1,1]
+        @tensor sa2[1,2] := ua'[-1,1] * ar[-1,-2] * vda'[2,-2]
+        @test sa2 ≈ sa
+
+        ##with splitting and fusing
+        f = DASTensor{Complex{Float64},3}(U1(), ntuple(x -> u1chs, 3),
+                 ntuple(x -> u1ds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
+        uf, sf, vdf = tensorsvd(fr,((1,2),3))
+        @tensor fr2[1,2,3] := uf[1,2,-1] * sf[-1,-2] * vdf[-2,3]
+        @test fr2 ≈ fr
+
+        ## with charge
+        ar = DASTensor{Float64,2}(U1(), (u1chs, u1chs), (u1ds, u1ds), io)
+        initwithrand!(ar, U1Charge(1))
+        @test charge(ar) == U1Charge(1)
+        ua, sa, vda = tensorsvd(ar)
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        @test ar2 ≈ ar
+        @test sum(diag(sa)) ≈ @tensor sa[1,1]
+        @tensor sa2[1,2] := ua'[-1,1] * ar[-1,-2] * vda'[2,-2]
+        @test sa2 ≈ sa
+
+        ## with truncation
+        ar = DASTensor{Float64,2}(U1(), (U1Charges(0:0), U1Charges(0:0)), ([200], [200]), io)
+        initwithrand!(ar)
+        ua, sa, vda = tensorsvd(ar, svdtrunc = svdtrunc_maxerror(0.001))
+        @test all(sizes(sa,1) .<= 200)
+
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        ar2 /= norm(ar2)
+        ar /= norm(ar)
+        @test dot(ar2,ar) > 1-0.001
+
+        ua, sa, vda = tensorsvd(ar, svdtrunc = svdtrunc_maxcumerror(0.001))
+        @test all(sizes(sa,1) .<= 200)
+
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        ar2 /= norm(ar2)
+        ar /= norm(ar)
+        @test dot(ar2,ar) > 1-0.001
     end
 
-    N = 6
-    a = rand(ZNTensor{ComplexF64,N,2}, tuple([0:1 for i in 1:N]...), tuple([[2,2] for i in 1:N]...), tuple([1 for i in 1:N]...));
-    b = rand(ZNTensor{ComplexF64,N,2}, tuple([0:1 for i in 1:N]...), tuple([[2,2] for i in 1:N]...), tuple([-1 for i in 1:N]...));
+    @testset "Reshaping" begin
+        ##without permutation
+        f = DASTensor{Complex{Float64},6}(U1(), ntuple(x -> u1chs, 6),
+                 ntuple(x -> u1ds, 6), InOut(-1,-1,-1,1,1,1))
+        fr = initwithrand!(deepcopy(f))
+        frf, rs2 = fuselegs(fr, ((1,2),(3,4),(5,6)))
+        frff, rs3 = fuselegs(frf, ((1,2,3),))
+        @test abs(norm(frf)  - norm(fr)) < 1e-10
+        @test abs(norm(frff) - norm(fr)) < 1e-10
 
-    ref = tensorcontract(a,1:N,b,1:N,())
-    for i in rand(2:N-1,1)
-        for ioa in [(1,1),(1,-1),(-1,1),(-1,-1)], iob in [(1,1),(1,-1),(-1,1),(-1,-1)]
-            inds = randperm(N)
-            i1 = (inds[1:i]...,)
-            i2 = (inds[i+1:end]...,)
-            af = fuselegs(a,(i1,i2),ioa)[1]
-            bf = fuselegs(b,(i1,i2),iob)[1]
-            @test scalar(tensorcontract(af,1:2,bf,1:2,())) ≈ scalar(ref)
+        frffs = initwithzero!(deepcopy(frf))
+        frffss = initwithzero!(deepcopy(fr))
+        splitlegs!(frffs,  frff,  ((1,1,1),(1,1,2),(1,1,3)), rs3...)
+        splitlegs!(frffss, frffs, ((1,1,1),(1,1,2),(2,2,1),(2,2,2),(3,3,1),(3,3,3)), rs2...)
+        @test frffss ≈ fr
+
+        ##with permutation
+        f = DASTensor{Complex{Float64},4}(U1(), ntuple(x -> u1chs, 4),
+                 ntuple(x -> u1ds, 4), InOut(-1,-1,1,1))
+        fr = initwithrand!(deepcopy(f))
+        frf, rs = fuselegs(fr, ((1,3),(2,4)))
+        @test abs(norm(frf)  - norm(fr)) < 1e-10
+
+        frfs = initwithzero!(deepcopy(fr))
+        splitlegs!(frfs,  frf,  ((1,1,1),(2,2,1),(1,1,2),(2,2,2)), rs...)
+        @test frfs ≈ fr
+    end
+end
+
+@testset "Z2" begin
+    z2chs, z2ds, io = Z2Charges(), fill(2,2), InOut(-1,1)
+    @testset "Initialization" begin
+        a = DASTensor{Float64,2}(Z2(), (z2chs, z2chs), (z2ds, z2ds), io)
+        @test symmetry(a) == Z2()
+        @test chargetype(a) == chargetype(Z2())
+        @test chargestype(a) == chargestype(Z2())
+        @test eltype(a) == Float64
+        @test isempty(tensor(a))
+
+
+        #Initialize with zeros
+        b0 = initwithzero!(deepcopy(a))
+        @tensor bs = b0[1,1]
+        @test isinvariant(b0)
+
+        @test charge(b0) == zero(Z2Charge)
+        @test bs == zero(Float64)
+
+
+        #Initialize with rand
+        br = initwithrand!(deepcopy(a))
+        bd = todense(br)
+        @tensor begin
+            sc = br[1,1]
+            scd = bd[1,1]
+        end
+
+        @test sc isa Float64
+        @test scd isa Float64
+        @test sc ≈ scd
+    end
+
+    @testset "TensorOperations" begin
+        f = DASTensor{Complex{Float64},3}(Z2(), ntuple(x -> z2chs, 3),
+                 ntuple(x -> z2ds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
+        ##inner product direct
+        @tensor ref = fr[1,2,3] * fr'[1,2,3]
+        ##inner product direct with permutation
+        @test ref ≈ @tensor fr'[2,1,3] * fr[2,1,3]
+        ##outer product then trace
+        @test ref ≈ @tensor begin
+            fr2[1,2,3,4,5,6] := fr[1,2,3] * fr'[4,5,6]
+            fr2[1,2,3,1,2,3]
+        end
+        ##partial contraction then partial trace
+        @test ref ≈ @tensor begin
+            fr3[1,2,3,4] := fr[1,2,-1] * fr'[3,4,-1]
+            fr3[1,2,1,2]
         end
     end
 
-    N = 3
-    a = rand(ZNTensor{ComplexF64,N,2}, tuple([0:1 for i in 1:N]...), tuple([[2,2] for i in 1:N]...), tuple([1 for i in 1:N]...));
-    b = rand(ZNTensor{ComplexF64,N,2}, tuple([0:1 for i in 1:N]...), tuple([[2,2] for i in 1:N]...), tuple([-1 for i in 1:N]...));
+    @testset "KrylovKit" begin
+        #compare operations from krylovkit
+        f = DASTensor{Complex{Float64},3}(Z2(), ntuple(x -> z2chs, 3),
+                 ntuple(x -> z2ds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
 
-    ref = tensorcontract(a,1:N,b,1:N,())
-    for ioa in Iterators.product([(1,-1) for i in 1:N]...),
-        iob in Iterators.product([(1,-1) for i in 1:N]...)
-        inds = randperm(N)
-        af = fuselegs(a,inds,ioa)[1]
-        bf = fuselegs(b,inds,iob)[1]
-        @test scalar(tensorcontract(af,1:N,bf,1:N,())) ≈ scalar(ref)
+        ##fill!
+        fr0 = fill!(deepcopy(fr), 0)
+        @test all(iszero(v) for v in values(fr0))
+
+        ##mul! -> w = a .* v
+        fr2 = deepcopy(fr)
+        mul!(fr2, fr, 2)
+        @test fr2 ≈ fr * 2
+        mul!(fr2, fr, 1/2)
+        @test fr2 ≈ fr/2
+        mul!(fr2, fr, 1im)
+        @test fr2 ≈ fr * 1im
+
+        ##rmul! w = a .* w
+        fr2 = deepcopy(fr)
+        rmul!(fr2, 2)
+        @test fr2 ≈ fr * 2
+        rmul!(fr2, 0)
+        @test all(iszero(v) for v in values(fr2))
+
+        ##axpy! a,v,w -> w = a * v + w
+        fr2 = deepcopy(fr)
+        axpy!(1,fr, fr2)
+        @test fr2 ≈ 2 * fr
+        axpy!(0,fr, fr2)
+        @test fr2 ≈ 2 * fr
+
+        ##axpby! a,v,b,w -> w = a * v + b * w
+        fr2 = deepcopy(fr)
+        axpby!(1,fr,1,fr2)
+        @test fr2 ≈ 2 * fr
+        initwithrand!(fr2)
+        axpby!(1,fr,0,fr2)
+        @test fr2 ≈ fr
+        initwithrand!(fr2)
+        @tensor frsum[1,2,3] := fr[1,2,3] + fr2[1,2,3]
+        axpby!(1,fr,1,fr2)
+        @test fr2 ≈ frsum
+
+        ##dot, norm
+        f = DASTensor{Complex{Float64},3}(Z2(), ntuple(x -> z2chs, 3),
+                 ntuple(x -> z2ds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
+        @tensor ref = fr[1,2,3] * fr'[1,2,3]
+        @test ref ≈ dot(fr,fr)
+        @test ref ≈ norm(fr)^2
+        nfr = fr / norm(fr)
+        @test norm(nfr) ≈ 1
+    end
+
+    @testset "TensorFactorization" begin
+        ##w/o splitting and fusing
+        ar = DASTensor{Float64,2}(Z2(), (z2chs, z2chs), (z2ds, z2ds), io)
+        initwithrand!(ar)
+        ua, sa, vda = tensorsvd(ar)
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        @test ar2 ≈ ar
+        @test sum(diag(sa)) ≈ @tensor sa[1,1]
+        @tensor sa2[1,2] := ua'[-1,1] * ar[-1,-2] * vda'[2,-2]
+        @test sa2 ≈ sa
+
+        ##with splitting and fusing
+        f = DASTensor{Complex{Float64},3}(Z2(), ntuple(x -> z2chs, 3),
+                 ntuple(x -> z2ds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
+        uf, sf, vdf = tensorsvd(fr,((1,2),3))
+        @tensor fr2[1,2,3] := uf[1,2,-1] * sf[-1,-2] * vdf[-2,3]
+        @test fr2 ≈ fr
+
+        ## with charge
+        ar = DASTensor{Float64,2}(Z2(), (z2chs, z2chs), (z2ds, z2ds), io)
+        initwithrand!(ar, Z2Charge(1))
+        @test charge(ar) == Z2Charge(1)
+        ua, sa, vda = tensorsvd(ar)
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        @test ar2 ≈ ar
+        @test sum(diag(sa)) ≈ @tensor sa[1,1]
+        @tensor sa2[1,2] := ua'[-1,1] * ar[-1,-2] * vda'[2,-2]
+        @test sa2 ≈ sa
+
+        ## with truncation
+        ar = DASTensor{Float64,2}(Z2(), (Z2Charges(), Z2Charges()), ([200,200], [200,200]), io)
+        initwithrand!(ar)
+        ua, sa, vda = tensorsvd(ar, svdtrunc = svdtrunc_maxerror(0.001))
+        @test all(sizes(sa,1) .<= 200)
+
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        ar2 /= norm(ar2)
+        ar /= norm(ar)
+        @test dot(ar2,ar) > 1-0.001
+
+        ua, sa, vda = tensorsvd(ar, svdtrunc = svdtrunc_maxcumerror(0.001))
+        @test all(sizes(sa,1) .<= 200)
+
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        ar2 /= norm(ar2)
+        ar /= norm(ar)
+        @test dot(ar2,ar) > 1-0.001
+    end
+
+    @testset "Reshaping" begin
+        ##without permutation
+        f = DASTensor{Complex{Float64},6}(Z2(), ntuple(x -> z2chs, 6),
+                 ntuple(x -> z2ds, 6), InOut(-1,-1,-1,1,1,1))
+        fr = initwithrand!(deepcopy(f))
+        frf, rs2 = fuselegs(fr, ((1,2),(3,4),(5,6)))
+        frff, rs3 = fuselegs(frf, ((1,2,3),))
+        @test abs(norm(frf)  - norm(fr)) < 1e-10
+        @test abs(norm(frff) - norm(fr)) < 1e-10
+
+        frffs = initwithzero!(deepcopy(frf))
+        frffss = initwithzero!(deepcopy(fr))
+        splitlegs!(frffs,  frff,  ((1,1,1),(1,1,2),(1,1,3)), rs3...)
+        splitlegs!(frffss, frffs, ((1,1,1),(1,1,2),(2,2,1),(2,2,2),(3,3,1),(3,3,3)), rs2...)
+        @test frffss ≈ fr
+
+        ##with permutation
+        f = DASTensor{Complex{Float64},4}(Z2(), ntuple(x -> z2chs, 4),
+                 ntuple(x -> z2ds, 4), InOut(-1,-1,1,1))
+        fr = initwithrand!(deepcopy(f))
+        frf, rs = fuselegs(fr, ((1,3),(2,4)))
+        @test abs(norm(frf)  - norm(fr)) < 1e-10
+
+        frfs = initwithzero!(deepcopy(fr))
+        splitlegs!(frfs,  frf,  ((1,1,1),(2,2,1),(1,1,2),(2,2,2)), rs...)
+        @test frfs ≈ fr
+    end
+end
+
+@testset "NDAS" begin
+    ndaschs, ndasds, io = NDASCharges(Z2Charges(), U1Charges(-2:2)), fill(2,10), InOut(-1,1)
+    @testset "Initialization" begin
+        a = DASTensor{Float64,2}(NDAS(Z2(),U1()), (ndaschs, ndaschs), (ndasds, ndasds), io)
+        @test symmetry(a) == NDAS(Z2(),U1())
+        @test chargetype(a) == chargetype(a)
+        @test chargestype(a) == chargestype(a)
+        @test eltype(a) == Float64
+        @test isempty(tensor(a))
+
+        #Initialize with zeros
+        b0 = initwithzero!(deepcopy(a))
+        @test isinvariant(b0)
+        @tensor bs = b0[1,1]
+
+        @test charge(b0) == zero(chargetype(a))
+        @test bs == zero(Float64)
+
+        #Initialize with rand
+        br = initwithrand!(deepcopy(a))
+        bd = todense(br)
+        @tensor begin
+            sc = br[1,1]
+            scd = bd[1,1]
+        end
+
+        @test sc isa Float64
+        @test scd isa Float64
+        @test sc ≈ scd
+    end
+
+    @testset "TensorOperations" begin
+        f = DASTensor{Complex{Float64},3}(NDAS(Z2(),U1()), ntuple(x -> ndaschs, 3),
+                 ntuple(x -> ndasds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
+        ##inner product direct
+        @tensor ref = fr[1,2,3] * fr'[1,2,3]
+        ##inner product direct with permutation
+        @test ref ≈ @tensor fr'[2,1,3] * fr[2,1,3]
+        ##outer product then trace
+        @test ref ≈ @tensor begin
+            fr2[1,2,3,4,5,6] := fr[1,2,3] * fr'[4,5,6]
+            fr2[1,2,3,1,2,3]
+        end
+        ##partial contraction then partial trace
+        @test ref ≈ @tensor begin
+            fr3[1,2,3,4] := fr[1,2,-1] * fr'[3,4,-1]
+            fr3[1,2,1,2]
+        end
+    end
+
+    @testset "KrylovKit" begin
+        #compare operations from krylovkit
+        f = DASTensor{Complex{Float64},3}(NDAS(Z2(),U1()), ntuple(x -> ndaschs, 3),
+                 ntuple(x -> ndasds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
+
+        ##fill!
+        fr0 = fill!(deepcopy(fr), 0)
+        @test all(iszero(v) for v in values(fr0))
+
+        ##mul! -> w = a .* v
+        fr2 = deepcopy(fr)
+        mul!(fr2, fr, 2)
+        @test fr2 ≈ fr * 2
+        mul!(fr2, fr, 1/2)
+        @test fr2 ≈ fr/2
+        mul!(fr2, fr, 1im)
+        @test fr2 ≈ fr * 1im
+
+        ##rmul! w = a .* w
+        fr2 = deepcopy(fr)
+        rmul!(fr2, 2)
+        @test fr2 ≈ fr * 2
+        rmul!(fr2, 0)
+        @test all(iszero(v) for v in values(fr2))
+
+        ##axpy! a,v,w -> w = a * v + w
+        fr2 = deepcopy(fr)
+        axpy!(1,fr, fr2)
+        @test fr2 ≈ 2 * fr
+        axpy!(0,fr, fr2)
+        @test fr2 ≈ 2 * fr
+
+        ##axpby! a,v,b,w -> w = a * v + b * w
+        fr2 = deepcopy(fr)
+        axpby!(1,fr,1,fr2)
+        @test fr2 ≈ 2 * fr
+        initwithrand!(fr2)
+        axpby!(1,fr,0,fr2)
+        @test fr2 ≈ fr
+        initwithrand!(fr2)
+        @tensor frsum[1,2,3] := fr[1,2,3] + fr2[1,2,3]
+        axpby!(1,fr,1,fr2)
+        @test fr2 ≈ frsum
+
+        ##dot, norm
+        f = DASTensor{Complex{Float64},3}(NDAS(Z2(),U1()), ntuple(x -> ndaschs, 3),
+                 ntuple(x -> ndasds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
+        @tensor ref = fr[1,2,3] * fr'[1,2,3]
+        @test ref ≈ dot(fr,fr)
+        @test ref ≈ norm(fr)^2
+        nfr = fr / norm(fr)
+        @test norm(nfr) ≈ 1
+    end
+
+    @testset "TensorFactorization" begin
+        ##w/o splitting and fusing
+        ar = DASTensor{Float64,2}(NDAS(Z2(),U1()), (ndaschs, ndaschs), (ndasds, ndasds), io)
+        initwithrand!(ar)
+        ua, sa, vda = tensorsvd(ar)
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        @test ar2 ≈ ar
+        @test sum(diag(sa)) ≈ @tensor sa[1,1]
+        @tensor sa2[1,2] := ua'[-1,1] * ar[-1,-2] * vda'[2,-2]
+        @test sa2 ≈ sa
+
+        ##with splitting and fusing
+        f = DASTensor{Complex{Float64},3}(NDAS(Z2(),U1()), ntuple(x -> ndaschs, 3),
+                 ntuple(x -> ndasds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
+        uf, sf, vdf = tensorsvd(fr,((1,2),3))
+        @tensor fr2[1,2,3] := uf[1,2,-1] * sf[-1,-2] * vdf[-2,3]
+        @test fr2 ≈ fr
+
+        ## with charge
+        ar = DASTensor{Float64,2}(NDAS(Z2(),U1()), (ndaschs, ndaschs), (ndasds, ndasds), io)
+        initwithrand!(ar, NDASCharge(Z2Charge(1), U1Charge(1)))
+        @test charge(ar) == NDASCharge(Z2Charge(1), U1Charge(1))
+        ua, sa, vda = tensorsvd(ar)
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        @test ar2 ≈ ar
+        @test sum(diag(sa)) ≈ @tensor sa[1,1]
+        @tensor sa2[1,2] := ua'[-1,1] * ar[-1,-2] * vda'[2,-2]
+        @test sa2 ≈ sa
+
+        ## with truncation
+        ar = DASTensor{Float64,2}(NDAS(Z2(),U1()),
+            (NDASCharges(Z2Charges(), U1Charges(0:0)),
+             NDASCharges(Z2Charges(), U1Charges(0:0))),
+             ([200,200], [200,200]), io)
+        initwithrand!(ar)
+        ua, sa, vda = tensorsvd(ar, svdtrunc = svdtrunc_maxerror(0.001))
+        @test all(sizes(sa,1) .<= 200)
+
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        ar2 /= norm(ar2)
+        ar /= norm(ar)
+        @test dot(ar2,ar) > 1-0.001
+
+        ua, sa, vda = tensorsvd(ar, svdtrunc = svdtrunc_maxcumerror(0.001))
+        @test all(sizes(sa,1) .<= 200)
+
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        ar2 /= norm(ar2)
+        ar /= norm(ar)
+        @test dot(ar2,ar) > 1-0.001
+    end
+
+    @testset "Reshaping" begin
+        ##without permutation
+        f = DASTensor{Complex{Float64},6}(NDAS(Z2(),U1()), ntuple(x -> ndaschs, 6),
+                 ntuple(x -> ndasds, 6), InOut(-1,-1,-1,1,1,1))
+        fr = initwithrand!(deepcopy(f))
+        frf, rs2 = fuselegs(fr, ((1,2),(3,4),(5,6)))
+        frff, rs3 = fuselegs(frf, ((1,2,3),))
+        @test abs(norm(frf)  - norm(fr)) < 1e-10
+        @test abs(norm(frff) - norm(fr)) < 1e-10
+
+        frffs = initwithzero!(deepcopy(frf))
+        frffss = initwithzero!(deepcopy(fr))
+        splitlegs!(frffs,  frff,  ((1,1,1),(1,1,2),(1,1,3)), rs3...)
+        splitlegs!(frffss, frffs, ((1,1,1),(1,1,2),(2,2,1),(2,2,2),(3,3,1),(3,3,3)), rs2...)
+        @test frffss ≈ fr
+
+        ##with permutation
+        f = DASTensor{Complex{Float64},4}(NDAS(Z2(),U1()), ntuple(x -> ndaschs, 4),
+                 ntuple(x -> ndasds, 4), InOut(-1,-1,1,1))
+        fr = initwithrand!(deepcopy(f))
+        frf, rs = fuselegs(fr, ((1,3),(2,4)))
+        @test abs(norm(frf)  - norm(fr)) < 1e-10
+
+        frfs = initwithzero!(deepcopy(fr))
+        splitlegs!(frfs,  frf,  ((1,1,1),(2,2,1),(1,1,2),(2,2,2)), rs...)
+        @test frfs ≈ fr
+    end
+end
+
+@testset "DTensor" begin
+    @testset "Initialization" begin
+        #Initialize with zeros
+        a = DTensor{Complex{Float64}}((8,8))
+        b0 = initwithzero!(deepcopy(a))
+        @tensor bs = b0[1,1]
+
+        @test bs == zero(Complex{Float64})
+
+        #Initialize with rand
+        br = initwithrand!(deepcopy(a))
+        @tensor sc = br[1,1]
+        @test sc isa Complex{Float64}
+    end
+
+    @testset "TensorOperations" begin
+        f = DTensor{Complex{Float64},3}((4,4,4))
+        fr = initwithrand!(deepcopy(f))
+        ##inner product direct
+        @tensor ref = fr[1,2,3] * fr'[1,2,3]
+        ##inner product direct with permutation
+        @test ref ≈ @tensor fr'[2,1,3] * fr[2,1,3]
+        ##outer product then trace
+        @test ref ≈ @tensor begin
+            fr2[1,2,3,4,5,6] := fr[1,2,3] * fr'[4,5,6]
+            fr2[1,2,3,1,2,3]
+        end
+        ##partial contraction then partial trace
+        @test ref ≈ @tensor begin
+            fr3[1,2,3,4] := fr[1,2,-1] * fr'[3,4,-1]
+            fr3[1,2,1,2]
+        end
+    end
+
+    @testset "KrylovKit" begin
+        #compare operations from krylovkit
+        f = DTensor{Complex{Float64},3}((8,8,8))
+        fr = initwithrand!(deepcopy(f))
+
+        ##fill!
+        fr0 = fill!(deepcopy(fr), 0)
+        @test iszero(fr0.array)
+
+        ##mul! -> w = a .* v
+        fr2 = deepcopy(fr)
+        mul!(fr2, fr, 2)
+        @test fr2 ≈ fr * 2
+        mul!(fr2, fr, 1/2)
+        @test fr2 ≈ fr/2
+        mul!(fr2, fr, 1im)
+        @test fr2 ≈ fr * 1im
+
+        ##rmul! w = a .* w
+        fr2 = deepcopy(fr)
+        rmul!(fr2, 2)
+        @test fr2 ≈ fr * 2
+        rmul!(fr2, 0)
+        @test iszero(fr2.array)
+
+        ##axpy! a,v,w -> w = a * v + w
+        fr2 = deepcopy(fr)
+        axpy!(1,fr, fr2)
+        @test fr2 ≈ 2 * fr
+        axpy!(0,fr, fr2)
+        @test fr2 ≈ 2 * fr
+
+        ##axpby! a,v,b,w -> w = a * v + b * w
+        fr2 = deepcopy(fr)
+        axpby!(1,fr,1,fr2)
+        @test fr2 ≈ 2 * fr
+        initwithrand!(fr2)
+        axpby!(1,fr,0,fr2)
+        @test fr2 ≈ fr
+        initwithrand!(fr2)
+        @tensor frsum[1,2,3] := fr[1,2,3] + fr2[1,2,3]
+        axpby!(1,fr,1,fr2)
+        @test fr2 ≈ frsum
+
+        ##dot, norm
+        f = DTensor{Complex{Float64},3}((8,8,8))
+        fr = initwithrand!(deepcopy(f))
+        @tensor ref = fr[1,2,3] * fr'[1,2,3]
+        @test ref ≈ dot(fr,fr)
+        @test ref ≈ norm(fr)^2
+        nfr = fr / norm(fr)
+        @test norm(nfr) ≈ 1
+    end
+
+    @testset "TensorFactorization" begin
+        ##w/o splitting and fusing
+        ar = DTensor{Float64,2}((20,20))
+        initwithrand!(ar)
+        ua, sa, vda = tensorsvd(ar)
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        @test ar2 ≈ ar
+        @test sum(diag(sa)) ≈ @tensor sa[1,1]
+        @tensor sa2[1,2] := ua'[-1,1] * ar[-1,-2] * vda'[2,-2]
+        @test sa2 ≈ sa
+
+        ##with splitting and fusing
+        f = DTensor{Complex{Float64},3}((5,5,5))
+        fr = initwithrand!(deepcopy(f))
+        uf, sf, vdf = tensorsvd(fr,((1,2),3))
+        @tensor fr2[1,2,3] := uf[1,2,-1] * sf[-1,-2] * vdf[-2,3]
+        @test fr2 ≈ fr
+
+        ## with truncation
+        ar = DTensor{Float64,2}((200,200))
+        initwithrand!(ar)
+        ua, sa, vda = tensorsvd(ar, svdtrunc = svdtrunc_maxerror(0.001))
+        @test all(size(sa) .<= 200)
+
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        ar2 /= norm(ar2)
+        ar /= norm(ar)
+        @test dot(ar2,ar) > 1-0.001
+
+        ua, sa, vda = tensorsvd(ar, svdtrunc = svdtrunc_maxcumerror(0.001))
+        @test all(size(sa) .<= 200)
+
+        @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
+        ar2 /= norm(ar2)
+        ar /= norm(ar)
+        @test dot(ar2,ar) > 1-0.001
+    end
+
+    @testset "Reshaping" begin
+        ##without permutation
+        f = DTensor{Complex{Float64},6}(ntuple(i -> 2, 6))
+        fr = initwithrand!(deepcopy(f))
+        frf, rs2 = fuselegs(fr, ((1,2),(3,4),(5,6)))
+        frff, rs3 = fuselegs(frf, ((1,2,3),))
+        @test abs(norm(frf)  - norm(fr)) < 1e-10
+        @test abs(norm(frff) - norm(fr)) < 1e-10
+
+        frffs = initwithzero!(deepcopy(frf))
+        frffss = initwithzero!(deepcopy(fr))
+        splitlegs!(frffs,  frff,  ((1,1,1),(1,1,2),(1,1,3)), rs3...)
+        splitlegs!(frffss, frffs, ((1,1,1),(1,1,2),(2,2,1),(2,2,2),(3,3,1),(3,3,3)), rs2...)
+        @test frffss ≈ fr
+
+        ##with permutation
+        f = DTensor{Complex{Float64},4}(ntuple(i -> 2, 4))
+        fr = initwithrand!(deepcopy(f))
+        frf, rs = fuselegs(fr, ((1,3),(2,4)))
+        @test abs(norm(frf)  - norm(fr)) < 1e-10
+
+        frfs = initwithzero!(deepcopy(fr))
+        splitlegs!(frfs,  frf,  ((1,1,1),(2,2,1),(1,1,2),(2,2,2)), rs...)
+        @test frfs ≈ fr
     end
 end

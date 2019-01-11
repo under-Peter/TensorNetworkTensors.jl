@@ -1,3 +1,106 @@
+#AbstractTensor
+to3tuple(x) = ntuple(i -> x[i] isa Int ? (x[i],0,0) : x[i], length(x))
+"""
+	fuselegs(A, indexes)
+
+Fuse the indices in `A` as given by `indexes` where `indexes` is a tuple
+containing indices either alone or grouped in tuples - the latter will be fused.
+Returns a tuple of a tensor and the object necessary to undo the fusion.
+
+# Examples
+```julia-repl
+julia> a = DTensor(collect(reshape(1:8,2,2,2))
+DTensor{Int64,3}[1 3; 2 4]
+[5 7; 6 8]
+julia> fuselegs(a, ((1,2),3))
+(DTensor{Int64,2}[1 5; 2 6; 3 7; 4 8], ((2, 2),))
+```
+"""
+function fuselegs end
+
+"""
+	fuselegs!(AF,A, indexes)
+
+In-place version of `fuselegs` where `AF` is a tensor of the correct type
+and size to hold the fused version of `A`.
+See [`fuselegs`](@ref)
+"""
+function fuselegs! end
+
+"""
+	splitlegs(A, indexes, rs...)
+
+Split the indices in `A` as given by `indexes` and `rs`.
+`indexes` is a tuple of integers and 3-tuple where each 3-tuple (i,j,k)
+specifies that index `i` in `A` is split according to `rs[j]`, index `k` therein.
+Returns tensor with fused legs.
+
+# Examples
+```julia-repl
+julia> a = DTensor(collect(reshape(1:8,2,2,2))
+DTensor{Int64,3}[1 3; 2 4]
+[5 7; 6 8]
+julia> af, rs = fuselegs(a, ((1,2),3))
+(DTensor{Int64,2}[1 5; 2 6; 3 7; 4 8], ((2, 2),))
+julia> splitlegs(af, ((1,1,1),(1,1,2),2), rs...)
+DTensor{Int64,3}[1 3; 2 4]
+[5 7; 6 8]
+```
+"""
+function splitlegs end
+
+"""
+	splitlegs!(AS,A, indexes, rs...)
+
+In-place version of `splitlegs` where `AS` is a tensor of the correct type
+and size to hold the split version of `A`.
+See [`splitlegs`](@ref)
+"""
+function splitlegs! end
+
+
+#DTensor
+function fuselegs(A::DTensor{T}, indexes) where T
+    inds = map(x -> x isa Int ? (x,) : x, indexes)
+    s = size(A)
+    dims = map(i -> prod(TT.getindices(s,i)), inds)
+	AF = DTensor(Array{T}(undef,dims...))
+	fuselegs!(AF, A, indexes)
+end
+
+function fuselegs!(AF::DTensor{T}, A::DTensor{T}, indexes) where T
+    perm = TT.vcat(indexes...)
+	dims = size(AF)
+	s = size(A)
+	tmp = reshape(AF.array, size(A))
+	permutedims!(tmp, A.array, perm)
+	copyto!(AF.array, reshape(tmp, dims))
+    rs = tuple((TT.getindices(s,i) for i in indexes if i isa Tuple)...)
+    return  (AF, rs)
+end
+
+function splitlegs(A::DTensor{T}, indexes::NTuple{N,Union{NTuple{3,Int},Int}}, rs...) where {T,N}
+    s = size(A)
+    inds = to3tuple(indexes)
+	perm = TT.sortperm(inds)
+	inds = TT.getindices(inds, perm)
+    dims = ntuple(N) do i
+        inds[i][2] == 0 ? s[inds[i][1]] : rs[inds[i][2]][inds[i][3]]
+    end
+	AS = DTensor(Array{T}(undef, dims...))
+	splitlegs!(AS, A, indexes, rs...)
+end
+
+function splitlegs!(AS::DTensor{T}, A::DTensor{T}, indexes::NTuple{N,Union{NTuple{3,Int},Int}}, rs...) where {T,N}
+    inds = to3tuple(indexes)
+    dims  = size(AS)
+	iperm  = TT.invperm(TT.sortperm(inds))
+	tmp = reshape(A.array, dims...)
+	permutedims!(AS.array, tmp, iperm)
+	return AS
+end
+
+#DASTensor
 struct Reshaper{M,CHARGE,CHARGES}
     sectors ::Vector{DASSector{M,CHARGE}}
     chs     ::Vector{CHARGE}
@@ -133,7 +236,6 @@ end
 
 selectfrombool(a,b, M = count(b)) = ntuple(i -> a[findith(identity, b, i)], M)
 uniqueind(b::NTuple{M}) where M = ntuple(i -> findfirst(x -> x[1] == b[i][1], b) == i, Val(M))
-to3tuple(x) = ntuple(i -> x[i] isa Int ? (x[i],0,0) : x[i], length(x))
 _issplitcount(x, M) = ntuple(i -> count(y -> first(y) == i, x), M)
 _issplitconv(x::NTuple{M}) where M = ntuple(i -> x[i][2] == 0 ? 0 : x[i][1] , M)
 issplit(x,M) = map(x -> !iszero(x), _issplitcount(_issplitconv(x), M))
@@ -182,7 +284,7 @@ function splitlegs!(AS::DASTensor{T,M},
             nsec = permute(nsec,iperm)
             dims = TT.permute(size(AS[nsec]), perm)
             reshaped = reshape(view(degen,nrange...), dims...)
-            permdimed = tensorcopy(collect(reshaped), ntuple(identity,M), iperm)
+            permdimed = TO.tensorcopy(collect(reshaped), ntuple(identity,M), iperm)
             AS[nsec] = permdimed
         end
     end
