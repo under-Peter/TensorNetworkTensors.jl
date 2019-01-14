@@ -195,6 +195,11 @@ end
 fuselegs(A::DASTensor, indexes::Tuple)  =
     fuselegs(A, indexes, InOut(ntuple(i -> 1,length(indexes))...))
 
+"""
+	fuselegs(A, indexes[, io])
+For `DASTensor`s, the directions of the resulting legs might be specified.
+If `io` is ommitted, the default is `InOut(1,1,1...)`.
+"""
 function fuselegs(A::DASTensor{T,N,SYM}, indexes, lds::InOut{M}) where {M,T,N,SYM}
     rs = fusiondicts(A, indexes, lds)
     _totuple(x) = x isa Tuple ?  x : (x,)

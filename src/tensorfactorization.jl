@@ -10,7 +10,7 @@ svdtrunc_maxχ
 svdtrunc_maxcumerror
 svdtrunc_maxerror
 """
-#AbstractTensor
+function tensorsvd end
 function _tensorsvd(A::Array{<:Any,2}; svdtrunc = svdtrunc_default,
         helper::Bool = false)
     F = svd(A)
