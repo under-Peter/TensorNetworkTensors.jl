@@ -358,13 +358,13 @@ end
 
 #= Equalities =#
 function Base.:(==)(A::TT, B::TT) where {TT <: DASTensor{T,N}} where {T,N}
-    _equality_helper(A, B) && _tensor_equ(tensor(A), tensor(B))
+    issimilar(A, B) && _tensor_equ(tensor(A), tensor(B))
 end
 
 Base.:(==)(A::DASTensor, B::DASTensor) = false
 
 function Base.:(≈)(A::DASTensor{T,N}, B::DASTensor{T,N}) where {T,N}
-    _equality_helper(A, B) && _tensor_approx(A, B)
+    issimilar(A, B) && _tensor_approx(A, B)
 end
 
 Base.:(≈)(A::DASTensor, B::DASTensor) = false
@@ -381,7 +381,7 @@ end
 
 _tensor_equ(A, B) = false
 
-function _equality_helper(A, B)
+function issimilar(A::DASTensor, B::DASTensor)
     return  charge(A) == charge(B) &&
             charges(A) == charges(B) &&
             sizes(A) == sizes(B) &&

@@ -1,12 +1,23 @@
-#DTensor
-TO.scalar(A::DTensor)  = TO.scalar(A.array)
- ##Checked similar from indices
-TO.checked_similar_from_indices(C, T::Type, p1, p2, A::DTensor, CA::Symbol = :N) =
+#AbstractTensor
+TO.checked_similar_from_indices(C, T::Type, p1, p2, A::AbstractTensor, CA::Symbol = :N) =
     TO.checked_similar_from_indices(C, T, (p1..., p2...), A, CA)
 
-TO.checked_similar_from_indices(C, T::Type, poA, poB, p1, p2, A::DTensor,
-        B::DTensor, CA::Symbol = :N, CB::Symbol = :N) =
+TO.checked_similar_from_indices(C, T::Type, poA, poB, p1, p2, A::AbstractTensor,
+        B::AbstractTensor, CA::Symbol = :N, CB::Symbol = :N) =
     TO.checked_similar_from_indices(C, T, poA, poB, (p1..., p2...), A, B, CA, CB)
+
+TO.add!(α, A::AbstractTensor, conjA, β, C::AbstractTensor, p1, p2)=
+    TO.add!(α, A, conjA, β, C, (p1..., p2...))
+
+TO.trace!(α, A::AbstractTensor, CA, β, C::AbstractTensor, indleft, indright, cind1, cind2) =
+    TO.trace!(α, A, CA, β, C, (indleft..., indright...), cind1, cind2)
+
+TO.contract!(α, A::AbstractTensor, CA, B::AbstractTensor, CB, β, C::AbstractTensor, oindA, cindA, oindB,
+        cindB, indleft, indright, syms = nothing) =
+    TO.contract!(α, A, CA, B, CB, β, C, oindA, cindA, oindB, cindB, (indleft..., indright...), syms)
+
+#DTensor
+TO.scalar(A::DTensor)  = TO.scalar(A.array)
 
 function TO.checked_similar_from_indices(C, ::Type{T}, ind, A::DTensor, CA::Symbol) where T
     sz = map(n->size(A, n), ind)
@@ -33,21 +44,13 @@ function TO.checked_similar_from_indices(C, ::Type{T}, poA, poB, ind, A::DTensor
     end
 end
 
-TO.add!(α, A::DTensor, conjA, β, C::DTensor, p1, p2)=
-    TO.add!(α, A, conjA, β, C, (p1..., p2...))
 
 TO.add!(α, A::DTensor, conjA, β, C::DTensor, indCinA) =
     DTensor(TO.add!(α, A.array, conjA, β, C.array, indCinA))
 
-TO.trace!(α, A::DTensor, CA, β, C::DTensor, indleft, indright, cind1, cind2) =
-    TO.trace!(α, A, CA, β, C, (indleft..., indright...), cind1, cind2)
-
 TO.trace!(α, A::DTensor, CA, β, C::DTensor, indCinA, cindA1, cindA2) =
     DTensor(TO.trace!(α, A.array, CA, β, C.array, indCinA, cindA1, cindA2))
 
-TO.contract!(α, A::DTensor, CA, B::DTensor, CB, β, C::DTensor, oindA, cindA, oindB,
-        cindB, indleft, indright, syms = nothing) =
-    TO.contract!(α, A, CA, B, CB, β, C, oindA, cindA, oindB, cindB, (indleft..., indright...), syms)
 
 TO.contract!(α, A::DTensor, CA::Symbol, B::DTensor, CB::Symbol, β, C::DTensor,
         oindA, cindA, oindB, cindB, indCinoAB, syms::Union{Nothing, NTuple{3,Symbol}} = nothing) =
@@ -57,47 +60,48 @@ TO.contract!(α, A::DTensor, CA::Symbol, B::DTensor, CB::Symbol, β, C::DTensor,
 
 #DASTensor
 TO.scalar(a::DASTensor) = TO.scalar(first(values(a)))
-# TO.numind(::DASTensor{<:Any,N}) where N = N
 
-TO.similar_from_indices(T::Type, p1::Tuple, p2::Tuple, A::DASTensor, CA::Type{<:Val}) =
-    TO.similar_from_indices(T, (p1...,p2...), A, CA)
+function TO.checked_similar_from_indices(C, ::Type{T}, ind,
+        A::DASTensor{TA,NA,SYM,CHS,SS,CH}, CA::Symbol) where {T,TA,NA,SYM,CHS,SS,CH}
+    if CA == :N
+        dims = sizes(A,ind)
+        ios  = in_out(A,ind)
+    else
+        dims = reverse.(sizes(A,ind))
+        ios  = inv(in_out(A,ind))
+    end
+    chs = charges(A,ind)
 
-function TO.similar_from_indices(S::Type, index::NTuple{M,Int},
-        A::DASTensor{T,N,SYM}, ::Type{Val{CA}} = Val{:N}) where {M,T,N,SYM, CA}
-        dims = CA == :N ? sizes(A,index)  : map(reverse,sizes(A,index))
-        ios  = CA == :N ? in_out(A,index) : inv(in_out(A,index))
-    return DASTensor{S,M}(SYM, charges(A,index), deepcopy(dims), ios)
+    if C !== nothing && C isa DASTensor && dims == sizes(C) && ios == in_out(C) &&
+            chs == charges(C) && T == eltype(C)
+        CT = DASTensor{T,length(ind),CHS,SS,CH}
+        return C::CT
+    else
+        return DASTensor{T,length(ind)}(SYM, chs, deepcopy(dims), ios)
+    end
 end
 
-function TO.similar_from_indices(T::Type, index::NTuple{N,Int},
-            A::DASTensor{TA,NA,SYM}, B::DASTensor{TB,NB,SYM},
-            ::Type{Val{CA}} = Val{:N}, ::Type{Val{CB}} = Val{:N}) where
-                {N,TA,NA,TB,NB,SYM,CA,CB}
-    chs = TT.getindices(TT.vcat(charges(A), charges(B)), index)
-    dimsA =  CA == :N ? sizes(A) : map(reverse,sizes(A))
-    dimsB =  CB == :N ? sizes(B) : map(reverse,sizes(B))
-    dims  =  TT.getindices(TT.vcat(dimsA,dimsB), index)
-    io  =  vcat(ifelse(CA == :N, in_out(A), inv(in_out(A))),
-                ifelse(CB == :N, in_out(B), inv(in_out(B))))[index]
-    return DASTensor{T,N}(SYM, chs, deepcopy(dims), io)
- end
-
-function TO.similar_from_indices(T::Type, poA, poB, p1, p2,
-        A::DASTensor{TA,NA,SYM}, B::DASTensor{TB,NB,SYM},
-        ::Type{Val{CA}} = Val{:N},
-        ::Type{Val{CB}} = Val{:N}) where {TA,NA,TB,NB,SYM,CA,CB}
-    p12 = (p1...,p2...)
-    chs = TT.getindices(TT.vcat(charges(A,poA), charges(B,poB)), p12)
+function TO.checked_similar_from_indices(C, ::Type{T}, poA, poB, ind,
+        A::DASTensor{TA,NA,SYM,CHS,SS,CH},
+        B::DASTensor{TB,NB,SYM,CHS,SS,CH},
+        CA::Symbol, CB::Symbol) where {T,TA,NA,TB,NB,SYM,CHS,SS,CH}
+    chs = TT.getindices(TT.vcat(charges(A,poA), charges(B,poB)), ind)
     dims = TT.getindices(TT.vcat(
                 TT.getindices(CA == :N ? sizes(A) : reverse.(sizes(A)), poA),
                 TT.getindices(CB == :N ? sizes(B) : reverse.(sizes(B)), poB)),
-                p12)
+                ind)
     dimsA =  CA == :N ? sizes(A,poA) : map(reverse, sizes(A,poA))
     dimsB =  CB == :N ? sizes(B,poB) : map(reverse, sizes(B,poB))
-    dims = TT.getindices(TT.vcat(dimsA,dimsB), p12)
+    dims = TT.getindices(TT.vcat(dimsA,dimsB), ind)
     ios = vcat(ifelse(CA == :N, in_out(A,poA), inv(in_out(A,poA))),
-                ifelse(CB == :N, in_out(B,poB), inv(in_out(B,poB))))[p12]
-    return DASTensor{T,length(p12)}(SYM,chs, deepcopy(dims), ios)
+                ifelse(CB == :N, in_out(B,poB), inv(in_out(B,poB))))[ind]
+    if C !== nothing && C isa DASTensor && dims == sizes(C) && ios == in_out(C) &&
+            chs == charges(C) && T == eltype(C)
+        CT = DASTensor{T,length(ind),CHS,SS,CH}
+        return C::CT
+    else
+        return DASTensor{T,length(ind)}(SYM,chs, deepcopy(dims), ios)
+    end
 end
 
 function _errorsadd(A::DASTensor{T,N,SYM}, C, perm::NTuple{M}) where {T,N,SYM,M}
@@ -112,25 +116,21 @@ function _errorsadd(A::DASTensor{T,N,SYM}, C, perm::NTuple{M}) where {T,N,SYM,M}
     return ⊗(modio)
 end
 
-function TO.add!(α::Number, A::DASTensor{T,N}, ::Type{Val{CA}},
-     β::Number, C::DASTensor{S,N}, indCinA) where {T,S,N,CA}
+function TO.add!(α::Number, A::DASTensor{T,N}, CA, β::Number, C::DASTensor{S,N},
+            indCinA) where {T,S,N}
     perm = TT.sortperm(indCinA)
     maskfun = _errorsadd(A, C, perm)
     for (sector, degeneracy) in tensor(A)
         permsector = permute(maskfun(sector), perm)
         if haskey(tensor(C), permsector)
-            TO.add!(α, degeneracy, Val{CA}, β, C[permsector], indCinA)
+            TO.add!(α, degeneracy, CA, β, C[permsector], indCinA)
         else
-            C[permsector] = TO.similar_from_indices(T, indCinA, degeneracy)
-            TO.add!(α, degeneracy, Val{CA}, 0, C[permsector], indCinA)
+            C[permsector] = TO.checked_similar_from_indices(nothing, T, indCinA, degeneracy, CA)
+            TO.add!(α, degeneracy, CA, 0, C[permsector], indCinA)
         end
     end
     return C
 end
-
-TO.add!(α, A::DASTensor, CA, β, C::DASTensor, p1, p2) =
-    TO.add!(α, A, CA, β, C, (p1...,p2...))
-
 
 function _errorstrace(A::DASTensor{T,N,<:Any},
                          cindA1::NTuple{M,Int},
@@ -159,9 +159,8 @@ function _errorstrace(A::DASTensor{T,N,<:Any},
     return (⊗(maskAio), ⊗(maskCio))
 end
 
-function TO.trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}},
-                                β, C::DASTensor{S,M},
-                                indCinA, cindA1, cindA2) where {T,N,S,M,CA}
+function TO.trace!(α, A::DASTensor{T,N}, CA, β, C::DASTensor{S,M},
+                    indCinA, cindA1, cindA2) where {T,N,S,M}
     #conditions
     maskAfun, maskCfun = _errorstrace(A, cindA1, cindA2, C, indCinA)
 
@@ -174,22 +173,19 @@ function TO.trace!(α, A::DASTensor{T,N}, ::Type{Val{CA}},
         newsector = maskCfun(permute(deleteat(sector, cinds),perm))
         if haskey(C, newsector)
             if !in(newsector, passedset)
-                TO.trace!(α, A[sector], Val{CA}, β, C[newsector], indCinA, cindA1, cindA2)
+                TO.trace!(α, A[sector], CA, β, C[newsector], indCinA, cindA1, cindA2)
                 push!(passedset, newsector)
             else
-                TO.trace!(α, A[sector], Val{CA}, 1, C[newsector], indCinA, cindA1, cindA2)
+                TO.trace!(α, A[sector], CA, 1, C[newsector], indCinA, cindA1, cindA2)
             end
         else
-            C[newsector] = TO.similar_from_indices(T, indCinA, A[sector])
-            TO.trace!(α, A[sector], Val{CA}, 0, C[newsector], indCinA, cindA1, cindA2)
+            C[newsector] = TO.checked_similar_from_indices(nothing, T, indCinA, A[sector], CA)
+            TO.trace!(α, A[sector], CA, 0, C[newsector], indCinA, cindA1, cindA2)
             push!(passedset, newsector)
         end
     end
     return C
 end
-
-TO.trace!(α, A::DASTensor, CA, β, C::DASTensor, p1, p2, cindA1, cindA2) =
-    TO.trace!(α, A, CA, β, C, (p1..., p2...), cindA1, cindA2)
 
 function _errorscontract(A::DASTensor{TA,NA,<:Any},
                         (oindA, cindA)::Tuple{NTuple{NoA,Int}, NTuple{CoA,Int}},
@@ -225,11 +221,11 @@ function _errorscontract(A::DASTensor{TA,NA,<:Any},
     return (⊗(maskBio), ⊗(maskABio))
 end
 
-function TO.contract!(α, A::DASTensor{TA,NA,SYM}, ::Type{Val{CA}},
-                      B::DASTensor{TB,NB,SYM}, ::Type{Val{CB}}, β,
+function TO.contract!(α, A::DASTensor{TA,NA,SYM}, CA,
+                      B::DASTensor{TB,NB,SYM}, CB, β,
                       C::DASTensor{TC,NC,SYM}, oindA, cindA, oindB, cindB,
-                      indCinoAB, ::Type{Val{M}}=Val{:native}) where
-                      {TA,NA,TB,NB,TC,NC,CA,CB,M,SYM}
+                      indCinoAB, syms) where
+                      {TA,NA,TB,NB,TC,NC,M,SYM}
     #conditions
     maskBfun, maskABfun = _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
 
@@ -247,28 +243,21 @@ function TO.contract!(α, A::DASTensor{TA,NA,SYM}, ::Type{Val{CA}},
             if haskey(C, newsector)
                 if !in(newsector, passedset) #firstpass
                     push!(passedset, newsector)
-                    TO.contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
-                              β, C[newsector],
-                              oindA, cindA, oindB, cindB, indCinoAB, Val{M})
+                    TO.contract!(α, A[secA], CA, B[secB], CB, β, C[newsector],
+                              oindA, cindA, oindB, cindB, indCinoAB,syms)
                 else
-                    TO.contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
-                              1, C[newsector],
-                              oindA, cindA, oindB, cindB, indCinoAB, Val{M})
+                    TO.contract!(α, A[secA], CA, B[secB], CB, 1, C[newsector],
+                              oindA, cindA, oindB, cindB, indCinoAB,syms)
                  end
              else
-                C[newsector] = TO.similar_from_indices(TC, oindA, oindB, indCinoAB, (),
-                                    A[secA], B[secB], Val{:N}, Val{:N})
-
-                TO.contract!(α, A[secA], Val{CA}, B[secB], Val{CB},
-                          0, C[newsector],
-                          oindA, cindA, oindB, cindB, indCinoAB, Val{M})
+                C[newsector] = TO.checked_similar_from_indices(nothing, TC,
+                                    oindA, oindB, indCinoAB, (),
+                                    A[secA], B[secB], :N, :N)
+                TO.contract!(α, A[secA], CA, B[secB], CB, 0, C[newsector],
+                          oindA, cindA, oindB, cindB, indCinoAB,syms)
                 push!(passedset, newsector)
              end
          end
      end
      return C
  end
-
-TO.contract!(α, A::DASTensor, CA, B::DASTensor, CB, β, C::DASTensor,
-    oindA, cindA, oindB, cindB, p1, p2, method::Type{<:Val} = Val{:BLAS}) =
-    TO.contract!(α, A, CA, B, CB, β, C, oindA, cindA, oindB, cindB, (p1..., p2...), method)
