@@ -3,7 +3,7 @@ Tensors for Tensor Network Methods.
 `TNTensors.jl` overloads methods from `TensorOperations` and `KrylovKit` to work with Tensors that might be symmetric under some abelina symmetry.
 
 ## Installation
-Enter `]` in `julia1.x` to enter pkg-mode.
+Start julia `1.x` in `REPL`-mode and then enter `]` to enter pkg-mode.
 If not installed, install `TensorOperations` first with
 ```julia
 (v1.0) pkg> add TensorOperations
