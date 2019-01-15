@@ -33,11 +33,17 @@ uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 [[Sockets]]
 uuid = "6462fe0b-24de-5631-8697-dd941f90decc"
 
+[[Strided]]
+deps = ["LinearAlgebra", "Random", "Test", "TupleTools"]
+git-tree-sha1 = "e847369ec8911ee44773b7b9beb68d186fa7c65b"
+uuid = "5e0ebb24-38b0-5f93-81fe-25c709ecae67"
+version = "0.2.4"
+
 [[TensorOperations]]
-deps = ["LinearAlgebra", "Random", "Test"]
-git-tree-sha1 = "7ca18aa91655a19cdc32a9af6cf19c02a7e20810"
+deps = ["LinearAlgebra", "Random", "Strided", "Test", "TupleTools"]
+git-tree-sha1 = "68e5668e2a113a6f04f09e1cd8b163cf52c9a990"
 uuid = "6aa20fa7-93e2-5fca-9bc0-fbd0db3c71a2"
-version = "0.7.1"
+version = "1.0.1"
 
 [[Test]]
 deps = ["Distributed", "InteractiveUtils", "Logging", "Random"]

@@ -1,48 +1,63 @@
 #DTensor
 TO.scalar(A::DTensor)  = TO.scalar(A.array)
-TO.numind(A::DTensor{T,N}) where {T,N} = N
-TO.similar_from_indices(T::Type, indices, A::DTensor, ::Type{<:Val}=Val{:N}) =
-    DTensor(TO.similar_from_indices(T, indices, A.array, Val{:N}))
+ ##Checked similar from indices
+TO.checked_similar_from_indices(C, T::Type, p1, p2, A::DTensor, CA::Symbol = :N) =
+    TO.checked_similar_from_indices(C, T, (p1..., p2...), A, CA)
 
-TO.similar_from_indices(T::Type, poA, poB, p1, p2, A::DTensor, B::DTensor, CA, CB) =
-    DTensor(TO.similar_from_indices(T, poA, poB, p1, p2, A.array, B.array, CA, CB))
+TO.checked_similar_from_indices(C, T::Type, poA, poB, p1, p2, A::DTensor,
+        B::DTensor, CA::Symbol = :N, CB::Symbol = :N) =
+    TO.checked_similar_from_indices(C, T, poA, poB, (p1..., p2...), A, B, CA, CB)
 
-TO.similar_from_indices(T::Type, index, A::DTensor, B::DTensor,
-    ::Type{Val{CA}} = Val{:N}, ::Type{Val{CB}} = Val{:N}) where
-    {CA,CB} = DTensor(TO.similar_from_indices(T, index, A.array, B.array, Val{CA}, Val{CB}))
+function TO.checked_similar_from_indices(C, ::Type{T}, ind, A::DTensor, CA::Symbol) where T
+    sz = map(n->size(A, n), ind)
+    if C !== nothing && C isa DTensor && sz == size(C) && T == eltype(C)
+        CT = DTensor{T,length(sz)}
+        return C::CT
+    else
+        return similar(A, T, sz)
+    end
+end
 
-TO.similar_from_indices(T::Type, p1::Tuple, p2, A::DTensor, CA::Type{<:Val}) =
- DTensor(TO.similar_from_indices(T, (p1...,p2...), A.array, CA))
+function TO.checked_similar_from_indices(C, ::Type{T}, poA, poB, ind, A::DTensor,
+        B::DTensor, CA::Symbol, CB::Symbol) where {T,N}
+    oszA = map(n->size(A,n), poA)
+    oszB = map(n->size(B,n), poB)
+    sz = let osz = (oszA..., oszB...)
+        map(n->osz[n], ind)
+    end
+    if C !== nothing && C isa DTensor && sz == size(C) && T == eltype(C)
+        CT = DTensor{T,length(sz)}
+        return C::CT
+    else
+        return similar(A, T, sz)
+    end
+end
 
-TO.add!(α, A::DTensor{T,N}, CA::Type{<:Val}, β, C::DTensor{S,M},
-    p1, p2) where {T,N,S,M} = TO.add!(α, A, CA, β, C, (p1..., p2...))
+TO.add!(α, A::DTensor, conjA, β, C::DTensor, p1, p2)=
+    TO.add!(α, A, conjA, β, C, (p1..., p2...))
 
-TO.add!(α, A::DTensor{T,N}, ::Type{Val{CA}}, β, C::DTensor{S,M}, indCinA) where
-    {CA,T,N,S,M} = DTensor(TO.add!(α, A.array, Val{CA}, β, C.array, indCinA))
+TO.add!(α, A::DTensor, conjA, β, C::DTensor, indCinA) =
+    DTensor(TO.add!(α, A.array, conjA, β, C.array, indCinA))
 
-TO.add!(α, A::DTensor, CA::Type{<:Val}, β, C::DTensor, p1::Tuple, p2::Tuple) =
-    TO.add!(α, A, CA, β, C, (p1...,p2...))
+TO.trace!(α, A::DTensor, CA, β, C::DTensor, indleft, indright, cind1, cind2) =
+    TO.trace!(α, A, CA, β, C, (indleft..., indright...), cind1, cind2)
 
-TO.trace!(α, A::DTensor, CA::Type{<:Val}, β, C::DTensor, p1, p2, cindA1, cindA2) =
-    TO.trace!(α, A, CA, β, C, (p1..., p2...), cindA1, cindA2)
-TO.trace!(α, A::DTensor, ::Type{Val{CA}}, β, C::DTensor, indCinA, cindA1, cindA2) where
-    {CA} = DTensor(TO.trace!(α, A.array, Val{CA}, β, C.array, indCinA, cindA1, cindA2))
+TO.trace!(α, A::DTensor, CA, β, C::DTensor, indCinA, cindA1, cindA2) =
+    DTensor(TO.trace!(α, A.array, CA, β, C.array, indCinA, cindA1, cindA2))
 
-TO.contract!(α, A::DTensor, ::Type{Val{CA}}, B::DTensor, ::Type{Val{CB}}, β,
-    C::DTensor, oindA, cindA, oindB, cindB, indCinoAB,
-     ::Type{Val{M}} = Val{:BLAS}) where {CA,CB,M} =
-    DTensor(TO.contract!(α, A.array, Val{CA}, B.array, Val{CB},
-                         β, C.array, oindA, cindA, oindB, cindB,
-                         indCinoAB, Val{M}))
+TO.contract!(α, A::DTensor, CA, B::DTensor, CB, β, C::DTensor, oindA, cindA, oindB,
+        cindB, indleft, indright, syms = nothing) =
+    TO.contract!(α, A, CA, B, CB, β, C, oindA, cindA, oindB, cindB, (indleft..., indright...), syms)
 
-TO.contract!(α, A::DTensor, CA::Type{<:Val}, B::DTensor, CB::Type{<:Val}, β,
-                C::DTensor, oindA, cindA, oindB, cindB, p1, p2,
-                method::Type{<:Val} = Val{:BLAS}) =
-    TO.contract!(α, A, CA, B, CB, β, C, oindA, cindA, oindB, cindB, (p1..., p2...), method)
+TO.contract!(α, A::DTensor, CA::Symbol, B::DTensor, CB::Symbol, β, C::DTensor,
+        oindA, cindA, oindB, cindB, indCinoAB, syms::Union{Nothing, NTuple{3,Symbol}} = nothing) =
+        DTensor(TO.contract!(α, A.array, CA, B.array, CB, β, C.array,
+        oindA, cindA, oindB, cindB, indCinoAB, syms))
+
 
 #DASTensor
 TO.scalar(a::DASTensor) = TO.scalar(first(values(a)))
-TO.numind(::DASTensor{<:Any,N}) where N = N
+# TO.numind(::DASTensor{<:Any,N}) where N = N
 
 TO.similar_from_indices(T::Type, p1::Tuple, p2::Tuple, A::DASTensor, CA::Type{<:Val}) =
     TO.similar_from_indices(T, (p1...,p2...), A, CA)

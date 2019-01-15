@@ -23,8 +23,7 @@ Base.setindex!(A::DTensor, args...) = setindex!(A.array, args...)
 Base.size(A::DTensor,i...) = size(A.array,i...)
 Base.isapprox(A::DTensor, B::DTensor) = A.array ≈ B.array
 Base.:(==)(A::DTensor, B::DTensor) = A.array == B.array
-Base.similar(A::DTensor{T,N}, ::Type{S}) where {T,N,S} = DTensor(Base.similar(A.array, S))
-Base.similar(A::DTensor{T,N}) where {T,N,S} = DTensor(Base.similar(A.array, T))
+Base.similar(A::DTensor, args...) = DTensor(Base.similar(A.array, args...))
 Base.copy(A::DTensor) = DTensor(copy(A.array))
 Base.copy!(dest::DTensor, source::DTensor) = DTensor(copy!(dest.array, source.array))
 Base.copyto!(dest::DTensor, source::DTensor) = Base.copyto!(dest.array, source.array)
