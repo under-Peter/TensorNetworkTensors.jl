@@ -97,7 +97,7 @@ function TO.checked_similar_from_indices(C, ::Type{T}, poA, poB, ind,
                 ifelse(CB == :N, in_out(B,poB), inv(in_out(B,poB))))[ind]
     if C !== nothing && C isa DASTensor && dims == sizes(C) && ios == in_out(C) &&
             chs == charges(C) && T == eltype(C)
-        CT = DASTensor{T,length(ind),CHS,SS,CH}
+        CT = DASTensor{T,length(ind),SYM,CHS,SS,CH}
         return C::CT
     else
         return DASTensor{T,length(ind)}(SYM,chs, deepcopy(dims), ios)
