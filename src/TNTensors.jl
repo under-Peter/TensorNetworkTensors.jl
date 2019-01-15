@@ -27,10 +27,12 @@ export chargeindex, ⊗, ⊕, DASSector, InOut, charge, deleteat, permute
 export allsectors, covariantsectors, invariantsectors
 export DASTensor
 export charges, sizes, in_out, tensor, symmetry, setcharges!, setsizes!, setin_out!,
-    settensor!, isinvariant, initwithrand!, initwithzero!, todense
+    settensor!, isinvariant, initwithrand!, initwithzero!
 export chargestype, chargetype, dimstype, symmetry
 
 include("DASTensors.jl")
+
+export toarray, todense
 
 #Multiplication and Division with Numbers
 export apply, apply!
