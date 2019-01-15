@@ -22,11 +22,13 @@ include("DTensors.jl")
 
 export DAS, DASCharges, DASCharge, NDAS, NDASCharges, NDASCharge,
         U1, U1Charges, U1Charge, ZN, ZNCharges, ZNCharge
+export Z2, Z2Charges, Z2Charge
 export chargeindex, ⊗, ⊕, DASSector, InOut, charge, deleteat, permute
 export allsectors, covariantsectors, invariantsectors
 export DASTensor
 export charges, sizes, in_out, tensor, symmetry, setcharges!, setsizes!, setin_out!,
     settensor!, isinvariant, initwithrand!, initwithzero!, todense
+export chargestype, chargetype, dimstype, symmetry
 
 include("DASTensors.jl")
 

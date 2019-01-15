@@ -11,13 +11,14 @@ svdtrunc_maxcumerror
 svdtrunc_maxerror
 """
 function tensorsvd end
+
 function _tensorsvd(A::Array{<:Any,2}; svdtrunc = svdtrunc_default,
         helper::Bool = false)
-    F = svd(A)
+    F = LA.svd(A)
     svals = F.S
     cutoff = svdtrunc(svals)
     U = F.U[:, 1:cutoff]
-    S = diagm(0=>svals[1:cutoff])
+    S = LA.diagm(0=>svals[1:cutoff])
     Vt = F.Vt[1:cutoff, :]
     helper && return (U, S, Vt, cutoff)
     return (U, S, Vt)

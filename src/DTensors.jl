@@ -28,7 +28,7 @@ Base.copy(A::DTensor) = DTensor(copy(A.array))
 Base.copy!(dest::DTensor, source::DTensor) = DTensor(copy!(dest.array, source.array))
 Base.copyto!(dest::DTensor, source::DTensor) = Base.copyto!(dest.array, source.array)
 Base.eltype(A::DTensor{T,N}) where {T,N} = T
-LA.diag(a::DTensor) = diag(a.array,0)
+LA.diag(a::DTensor) = LA.diag(a.array,0)
 toarray(a::DTensor) = a.array
 
 function initwith!(A::DTensor{T,N}, fun) where {T,N}

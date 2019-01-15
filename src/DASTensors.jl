@@ -353,7 +353,7 @@ todense(A::DASTensor{T,N}) where {T,N} = convert(DTensor{T},A)
 
 function LA.diag(A::DASTensor{T,2}) where T # TODO!!
     ks = sort!(collect(keys(A)))
-    return reduce(vcat, diag(A[k]) for k in ks)
+    return reduce(vcat, LA.diag(A[k]) for k in ks)
 end
 
 #= Equalities =#

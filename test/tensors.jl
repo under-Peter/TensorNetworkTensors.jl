@@ -1,6 +1,3 @@
-# using TNTensors
-using Test
-using TensorOperations: @tensor
 using LinearAlgebra
 
 @testset "U1Tensor" begin
