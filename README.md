@@ -246,7 +246,7 @@ true
 
 ## Factorizations
 
-So far the only factorization available is `tensorsvd` which returns the `SVD`
+So far the factorizations available are `tensorsvd` which returns the `SVD`
 of a tensor, see
 
 ```julia
@@ -269,6 +269,21 @@ search: tensorsvd tensorsvd! _tensorsvd TensorOperations
 
   Other options are: svdtruncdiscardzero svdtruncmaxχ svdtruncmaxcumerror svdtruncmaxerror
 ```
+and `tensorqr` which returns the `QR`-decomposition of a tensor, see
+```julia
+help?> tensorqr
+search: tensorqr tensor tensorsvd tensoradd tensorsvd! tensortrace tensorcopy tensoradd! tensortrace! tensorcopy! tensorproduct tensorproduct! tensorcontract
+
+  tensorqr(A::AbstractTensor)
+
+  returns tensor Q,R such that A = QR and Q is an orthogonal/unitary matrix and R is an upper triangular matrix.
+
+  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  tensorqr(A::AbstractTensor, inds)
+
+  returns the tensorqr of A fused according to inds.
+```
 
 # KrylovKit
 All `AbstractTensor`s work with `KrylovKit`,
@@ -288,12 +303,9 @@ julia> a = DASTensor{Complex{Float64},2}(
   (fill(2,6), fill(2,6)),
   InOut(1,-1))
 julia> initwithrand!(a)
-julia> using TensorOperations, LinearAlgebra
+julia> using TensorOperations
 julia> @tensor a[1,2] := a[1,2] + a'[2,1];
-julia> ishermitian(toarray(a))
-true
 ```
-Here `LinearAlgebra` was just loaded to check that `a` is hermitian.
 
 Since we are not working with a regular array,
 we need to provide an initial guess for an eigenvector, e.g.

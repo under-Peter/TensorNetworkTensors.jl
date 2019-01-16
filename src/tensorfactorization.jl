@@ -130,3 +130,55 @@ function connectingcharge(A)
     chs1 += charge(A)
     return in_out(A,2) ⊗ (chs1 ∩ chs2)
 end
+
+
+"""
+    tensorqr(A::AbstractTensor)
+
+returns tensor Q,R such that A = QR and Q is an orthogonal/unitary matrix
+and R is an upper triangular matrix.
+"""
+function tensorqr end
+
+"""
+    tensorqr(A::AbstractTensor, inds)
+
+returns the `tensorqr` of `A` fused according to `inds`.
+"""
+function tensorqr(A::AbstractTensor, inds)
+    fA, rs = fuselegs(A, inds)
+    Q,R = tensorqr(fA)
+    li1, li2 = length.(inds)
+    if li1 != 1
+        indxs = (ntuple(x -> (1,1,x), li1)..., 2)
+        Q = splitlegs(Q, indxs, rs...)
+    end
+    if li2 != 1
+        indxs = (1, ntuple(x -> (2,2,x), li2)...)
+        R = splitlegs(R, indxs, rs...)
+    end
+    return (Q,R)
+end
+
+function tensorqr(a::DTensor{<:Any,2})
+    f = LA.qr(a.array)
+    return DTensor(Matrix(f.Q)), DTensor(Matrix(f.R))
+end
+
+function tensorqr(a::DASTensor{T,2,SYM}) where {T,SYM}
+    lch = connectingcharge(a)
+    ld =  sizes(a,2)[[chargeindex(c,charges(a,2)) for c in lch]]
+
+    Q = DASTensor{T,2}(SYM, (charges(a,1), lch),
+            deepcopy.((sizes(a,1), ld)),
+            in_out(a))
+    R = DASTensor{T,2}(SYM, (lch, charges(a,2)),
+            deepcopy((ld,sizes(a,2))),
+            vcat(inv(in_out(a,2)), in_out(a,2)))
+
+    for (k, degen) in tensor(a)
+        in, out = k[1], k[2]
+        Q[DASSector(in, out)], R[DASSector(out, out)] = LA.qr(degen)
+    end
+    return (Q,R)
+end
