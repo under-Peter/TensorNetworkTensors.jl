@@ -413,6 +413,7 @@ function Base.copyto!(dest::TT, source::TT) where {TT <: DASTensor}
             dest[k] = copy(v)
         end
     end
+    return dest
 end
 
 Base.similar(A::DASTensor{T,N,SYM}, ::Type{S}) where {T,N,SYM,S} =

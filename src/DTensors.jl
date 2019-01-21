@@ -26,7 +26,7 @@ Base.:(==)(A::DTensor, B::DTensor) = A.array == B.array
 Base.similar(A::DTensor, args...) = DTensor(Base.similar(A.array, args...))
 Base.copy(A::DTensor) = DTensor(copy(A.array))
 Base.copy!(dest::DTensor, source::DTensor) = DTensor(copy!(dest.array, source.array))
-Base.copyto!(dest::DTensor, source::DTensor) = Base.copyto!(dest.array, source.array)
+Base.copyto!(dest::DTensor, source::DTensor) = (Base.copyto!(dest.array, source.array); dest)
 Base.eltype(A::DTensor{T,N}) where {T,N} = T
 LA.diag(a::DTensor) = LA.diag(a.array,0)
 toarray(a::DTensor) = a.array
