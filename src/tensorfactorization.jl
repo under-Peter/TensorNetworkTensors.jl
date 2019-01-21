@@ -92,8 +92,13 @@ function _maxerror(xs, ϵ, χ)
 end
 
 #DTensor
-tensorsvd(A::DTensor{T,2}; svdtrunc = svdtrunc_default) where T =
-    DTensor.(_tensorsvd(A.array, svdtrunc = svdtrunc))
+function tensorsvd(A::DTensor{T,2}; svdtrunc = svdtrunc_default) where T
+    U, S, Vd = _tensorsvd(A.array, svdtrunc = svdtrunc))
+    TT = promote_type(eltype.((U,S,Vd)))
+    return (DTensor(convert(Array{TT}, U)),
+            DTensor(convert(Array{TT}, S)),
+            DTensor(convert(Array{TT}, Vd))
+end
 
 #DASTensor
 function tensorsvd(A::DASTensor{T,N,SYM,CHARGES,SIZES,CHARGE};
