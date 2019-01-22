@@ -224,7 +224,7 @@ end
 function TO.contract!(α, A::DASTensor{TA,NA,SYM}, CA,
                       B::DASTensor{TB,NB,SYM}, CB, β,
                       C::DASTensor{TC,NC,SYM}, oindA, cindA, oindB, cindB,
-                      indCinoAB, syms) where
+                      indCinoAB, syms=nothing) where
                       {TA,NA,TB,NB,TC,NC,M,SYM}
     #conditions
     maskBfun, maskABfun = _errorscontract(A, (oindA, cindA), B, (oindB, cindB), C, indCinoAB)
