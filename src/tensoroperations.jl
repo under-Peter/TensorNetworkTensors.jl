@@ -170,18 +170,18 @@ function TO.trace!(α, A::DASTensor{T,N}, CA, β, C::DASTensor{S,M},
     t = typeof(maskCfun(permute(deleteat(first(sectors), cinds),perm)))
     passedset = Vector{t}() #might be slower for more elements
     for sector in sectors
-        newsector = maskCfun(permute(deleteat(sector, cinds),perm))
-        if haskey(C, newsector)
-            if !in(newsector, passedset)
-                TO.trace!(α, A[sector], CA, β, C[newsector], indCinA, cindA1, cindA2)
-                push!(passedset, newsector)
+        secC = maskCfun(permute(deleteat(sector, cinds),perm))
+        if haskey(C, secC)
+            if !in(secC, passedset)
+                TO.trace!(α, A[sector], CA, β, C[secC], indCinA, cindA1, cindA2)
+                push!(passedset, secC)
             else
-                TO.trace!(α, A[sector], CA, 1, C[newsector], indCinA, cindA1, cindA2)
+                TO.trace!(α, A[sector], CA, 1, C[secC], indCinA, cindA1, cindA2)
             end
         else
-            C[newsector] = TO.checked_similar_from_indices(nothing, T, indCinA, A[sector], CA)
-            TO.trace!(α, A[sector], CA, 0, C[newsector], indCinA, cindA1, cindA2)
-            push!(passedset, newsector)
+            C[secC] = TO.checked_similar_from_indices(nothing, T, indCinA, A[sector], CA)
+            TO.trace!(α, A[sector], CA, 0, C[secC], indCinA, cindA1, cindA2)
+            push!(passedset, secC)
         end
     end
     return C
@@ -233,29 +233,28 @@ function TO.contract!(α, A::DASTensor{TA,NA,SYM}, CA,
     indCinAB = TT.getindices(oinAB, indCinoAB)
     secsA = groupby(x -> x[cindA], keys(A))
     secsB = groupby(x -> maskBfun(x[cindB]), keys(B))
-
     # collect sectors that contract with each other
     secsAB = intersect(keys(secsA), keys(secsB))
-    passedset = Set()
+    passedset = Set{DASSector{NC,chargetype(SYM)}}()
     for sector in secsAB
         for secA in secsA[sector], secB in secsB[sector]
-            newsector = maskABfun(permute(vcat(secA[oindA], secB[oindB]), indCinoAB))
-            if haskey(C, newsector)
-                if !in(newsector, passedset) #firstpass
-                    push!(passedset, newsector)
-                    TO.contract!(α, A[secA], CA, B[secB], CB, β, C[newsector],
+            secC = maskABfun(permute(vcat(secA[oindA], secB[oindB]), indCinoAB))
+            if haskey(C, secC)
+                if in(secC, passedset) #firstpass
+                    TO.contract!(α, A[secA], CA, B[secB], CB, 1, C[secC],
                               oindA, cindA, oindB, cindB, indCinoAB,syms)
                 else
-                    TO.contract!(α, A[secA], CA, B[secB], CB, 1, C[newsector],
+                    push!(passedset, secC)
+                    TO.contract!(α, A[secA], CA, B[secB], CB, β, C[secC],
                               oindA, cindA, oindB, cindB, indCinoAB,syms)
                  end
              else
-                C[newsector] = TO.checked_similar_from_indices(nothing, TC,
+                C[secC] = TO.checked_similar_from_indices(nothing, TC,
                                     oindA, oindB, indCinoAB, (),
                                     A[secA], B[secB], :N, :N)
-                TO.contract!(α, A[secA], CA, B[secB], CB, 0, C[newsector],
+                TO.contract!(α, A[secA], CA, B[secB], CB, 0, C[secC],
                           oindA, cindA, oindB, cindB, indCinoAB,syms)
-                push!(passedset, newsector)
+                push!(passedset, secC)
              end
          end
      end
