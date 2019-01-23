@@ -104,9 +104,9 @@ function TO.checked_similar_from_indices(C, ::Type{T}, poA, poB, ind,
     end
 end
 
-function _errorsadd(A::DASTensor{T,N,SYM}, C, perm::NTuple{M}) where {T,N,SYM,M}
-    mask = in_out(A).v .== in_out(C, perm).v
-    for (m, iA, iC) in zip(mask, 1:M, perm)
+function _errorsadd(A::DASTensor{T,N,SYM}, C, indCinA::NTuple{M}) where {T,N,SYM,M}
+    mask = in_out(A,indCinA).v .== in_out(C).v
+    for (m, iA, iC) in zip(mask, indCinA, 1:M)
         sizes(A, iA) == ifelse(m,sizes(C, iC), reverse(sizes(C,iC))) ||
             throw(DimensionMismatch())
         charges(A, iA) == ifelse(m, charges(C, iC), inv(charges(C, iC))) ||
@@ -118,10 +118,9 @@ end
 
 function TO.add!(α::Number, A::DASTensor{T,N}, CA, β::Number, C::DASTensor{S,N},
             indCinA) where {T,S,N}
-    perm = TT.sortperm(indCinA)
-    maskfun = _errorsadd(A, C, perm)
+    maskfun = _errorsadd(A, C, indCinA)
     for (sector, degeneracy) in tensor(A)
-        permsector = permute(maskfun(sector), perm)
+        permsector = maskfun(sector)[indCinA]
         if haskey(tensor(C), permsector)
             TO.add!(α, degeneracy, CA, β, C[permsector], indCinA)
         else
