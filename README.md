@@ -1,6 +1,6 @@
-# TNTensors.jl
+# TensorNetworkTensors.jl
 Tensors for Tensor Network Methods.
-`TNTensors.jl` overloads methods from `TensorOperations` and `KrylovKit` to work with Tensors that might be symmetric under some abelina symmetry.
+`TensorNetworkTensors.jl` overloads methods from `TensorOperations` and `KrylovKit` to work with Tensors that might be symmetric under some abelina symmetry.
 
 ## Installation
 Enter `]` in `julia1.x` to enter pkg-mode.
@@ -8,9 +8,9 @@ If not installed, install `TensorOperations` first with
 ```julia
 (v1.0) pkg> add TensorOperations
 ```
-then you can go on to install `TNTensors.jl` with
+then you can go on to install `TensorNetworkTensors.jl` with
 ```julia
-(v1.0) pkg> add https://github.com/under-Peter/TNTensors.jl.git
+(v1.0) pkg> add https://github.com/under-Peter/TensorNetworkTensors.jl.git
 ```
 and you're set up!
 
