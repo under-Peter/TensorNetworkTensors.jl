@@ -166,10 +166,10 @@ function TO.trace!(α, A::DASTensor{T,N}, CA, β, C::DASTensor{S,M},
     perm = TT.sortperm(indCinA)
     sectors = filter(x -> isequal(maskAfun(x[cindA1]), x[cindA2]), keys(A))
     cinds = TT.vcat(cindA1, cindA2)
-    t = typeof(maskCfun(permute(deleteat(first(sectors), cinds),perm)))
-    passedset = Vector{t}() #might be slower for more elements
+
+    passedset = Set{DASSector{M,chargetype(symmetry(A))}}()
     for sector in sectors
-        secC = maskCfun(permute(deleteat(sector, cinds),perm))
+        secC = maskCfun(sector[indCinA])
         if haskey(C, secC)
             if !in(secC, passedset)
                 TO.trace!(α, A[sector], CA, β, C[secC], indCinA, cindA1, cindA2)
