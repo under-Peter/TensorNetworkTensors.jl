@@ -1,4 +1,4 @@
-name = "TNTensors"
+name = "TensorNetworkTensors"
 uuid = "745a9c42-ba8f-11e8-245d-33de09cdb470"
 authors = ["andreas <andreas.peter.ch@gmail.com>"]
 version = "0.1.0"
