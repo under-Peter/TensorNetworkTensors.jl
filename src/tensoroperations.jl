@@ -143,11 +143,9 @@ function _errorstrace(A::DASTensor{T,N,<:Any},
         charges(A, iA1) == ifelse(m, charges(A, iA2), inv(charges(A,iA2))) ||
             throw(ArgumentError("charges don't agree"))
     end
-    indsA = TT.sort(indCinA)
-    perm = TT.sortperm(indCinA)
 
-    maskC = in_out(A, indsA).v .== in_out(C, perm).v
-    for (m, iA, iC) in zip(maskC, indsA, perm) #trace in A
+    maskC = in_out(A, indCinA).v .== in_out(C).v
+    for (m, iA, iC) in zip(maskC, indCinA, 1:NC) #trace in A
         sizes(A, iA) == ifelse(m, sizes(C, iC), reverse(sizes(C,iC))) ||
             throw(DimensionMismatch())
         charges(A, iA) == ifelse(m, charges(C, iC), inv(charges(C,iC))) ||
@@ -163,7 +161,6 @@ function TO.trace!(α, A::DASTensor{T,N}, CA, β, C::DASTensor{S,M},
     #conditions
     maskAfun, maskCfun = _errorstrace(A, cindA1, cindA2, C, indCinA)
 
-    perm = TT.sortperm(indCinA)
     sectors = filter(x -> isequal(maskAfun(x[cindA1]), x[cindA2]), keys(A))
     cinds = TT.vcat(cindA1, cindA2)
 
