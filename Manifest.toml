@@ -57,9 +57,9 @@ version = "0.2.4"
 
 [[TensorOperations]]
 deps = ["LinearAlgebra", "Random", "Strided", "Test", "TupleTools"]
-git-tree-sha1 = "68e5668e2a113a6f04f09e1cd8b163cf52c9a990"
+git-tree-sha1 = "bbc38d24852abfbdcc6f554a8c80e894c2b790b9"
 uuid = "6aa20fa7-93e2-5fca-9bc0-fbd0db3c71a2"
-version = "1.0.1"
+version = "1.0.2"
 
 [[Test]]
 deps = ["Distributed", "InteractiveUtils", "Logging", "Random"]
