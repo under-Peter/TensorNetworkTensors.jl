@@ -1,4 +1,4 @@
-module TNTensors
+module TensorNetworkTensors
 import TensorOperations, LinearAlgebra
 using TupleTools
 using Parameters
