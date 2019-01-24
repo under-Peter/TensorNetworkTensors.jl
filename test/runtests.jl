@@ -1,7 +1,7 @@
 using Test
-using TNTensors
-using TensorOperations: @tensor
+using TensorNetworkTensors
+using TensorOperations: @tensor, tensorcopy
 using LinearAlgebra: diag
-@testset "TNTensors" begin
+@testset "TensorNetworkTensors" begin
     include("tensors.jl")
 end

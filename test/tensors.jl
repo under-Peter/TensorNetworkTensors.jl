@@ -38,6 +38,11 @@ using LinearAlgebra
         f = DASTensor{Complex{Float64},3}(U1(), ntuple(x -> u1chs, 3),
                  ntuple(x -> u1ds, 3), InOut(-1,-1,1))
         fr = initwithrand!(deepcopy(f))
+        #permutation
+        perms = (p for p in Iterators.product(ntuple(i -> 1:3, 3)...)
+            if sort(collect(p)) == 1:3)
+        @test all(toarray(tensorcopy(fr, p)) ≈ tensorcopy(toarray(fr), p)
+            for p in perms)
         ##inner product direct
         @tensor ref = fr[1,2,3] * fr'[1,2,3]
         ##inner product direct with permutation
@@ -227,6 +232,11 @@ end
         f = DASTensor{Complex{Float64},3}(Z2(), ntuple(x -> z2chs, 3),
                  ntuple(x -> z2ds, 3), InOut(-1,-1,1))
         fr = initwithrand!(deepcopy(f))
+        #permutation
+        perms = (p for p in Iterators.product(ntuple(i -> 1:3, 3)...)
+            if sort(collect(p)) == 1:3)
+        @test all(toarray(tensorcopy(fr, p)) ≈ tensorcopy(toarray(fr), p)
+            for p in perms)
         ##inner product direct
         @tensor ref = fr[1,2,3] * fr'[1,2,3]
         ##inner product direct with permutation
@@ -413,6 +423,11 @@ end
         f = DASTensor{Complex{Float64},3}(NDAS(Z2(),U1()), ntuple(x -> ndaschs, 3),
                  ntuple(x -> ndasds, 3), InOut(-1,-1,1))
         fr = initwithrand!(deepcopy(f))
+        #permutation
+        perms = (p for p in Iterators.product(ntuple(i -> 1:3, 3)...)
+            if sort(collect(p)) == 1:3)
+        @test all(toarray(tensorcopy(fr, p)) ≈ tensorcopy(toarray(fr), p)
+            for p in perms)
         ##inner product direct
         @tensor ref = fr[1,2,3] * fr'[1,2,3]
         ##inner product direct with permutation
@@ -585,6 +600,11 @@ end
     @testset "TensorOperations" begin
         f = DTensor{Complex{Float64},3}((4,4,4))
         fr = initwithrand!(deepcopy(f))
+        #permutation
+        perms = (p for p in Iterators.product(ntuple(i -> 1:3, 3)...)
+            if sort(collect(p)) == 1:3)
+        @test all(toarray(tensorcopy(fr, p)) ≈ tensorcopy(toarray(fr), p)
+            for p in perms)
         ##inner product direct
         @tensor ref = fr[1,2,3] * fr'[1,2,3]
         ##inner product direct with permutation
