@@ -164,6 +164,28 @@ using LinearAlgebra
         ar2 /= norm(ar2)
         ar /= norm(ar)
         @test dot(ar2,ar) > 1-0.001
+
+        ##tensorqr
+        ar = DASTensor{Float64,2}(U1(), (u1chs, u1chs), (u1ds, u1ds), io)
+        initwithrand!(ar)
+        q,r = tensorqr(ar,((1,),(2,)))
+        @tensor id[1,2] := q[1,-1] * q'[2,-1]
+        @test toarray(id) ≈ I
+        @tensor id[1,2] := q'[1,-1] * q[2,-1]
+        @test toarray(id) ≈ I
+        @test ar ≈ @tensor ar2[1,2] := q[1,-1] * r[-1,2]
+
+        fr = DASTensor{Float64,3}(U1(), (u1chs, u1chs, u1chs), (u1ds, u1ds, u1ds), InOut(1,1,-1))
+        fr = initwithrand!(fr)
+        q,r = tensorqr(fr, ((1,2),(3,)))
+        @tensor id[1,2] := q'[-1,-2,1] * q[-1,-2,2]
+        @test toarray(id) ≈ I
+        @test fr ≈ @tensor fr2[1,2,3] := q[1,2,-1] * r[-1,3]
+
+        r,q = tensorrq(fr, ((1,),(2,3)))
+        @tensor id[1,2] := q'[1,-1,-2] * q[2,-1,-2]
+        @test toarray(id) ≈ I
+        @test fr ≈ @tensor fr2[1,2,3] := r[1,-1] * q[-1,2,3]
     end
 
     @testset "Reshaping" begin
@@ -357,6 +379,34 @@ end
         ar2 /= norm(ar2)
         ar /= norm(ar)
         @test dot(ar2,ar) > 1-0.001
+
+        ##tensorqr
+        ar = DASTensor{ComplexF64,2}(ZN{2}(),
+            ntuple(i -> ZNCharges{2}(),2),
+            ntuple(i -> [10,10], 2),
+            InOut(ntuple(i -> -1, 2)...))
+        initwithrand!(ar)
+        q,r = tensorqr(ar,((1,),(2,)))
+        @tensor id[1,2] := q[1,-1] * q'[2,-1]
+        @test toarray(id) ≈ I
+        @tensor id[1,2] := q'[1,-1] * q[2,-1]
+        @test toarray(id) ≈ I
+        @test ar ≈ @tensor ar2[1,2] := q[1,-1] * r[-1,2]
+
+        fr = DASTensor{ComplexF64,3}(ZN{2}(),
+            ntuple(i -> ZNCharges{2}(),3),
+            ntuple(i -> [10,10], 3),
+            InOut(1,1,-1))
+        fr = initwithrand!(fr)
+        q,r = tensorqr(fr, ((1,2),(3,)))
+        @tensor id[1,2] := q'[-1,-2,1] * q[-1,-2,2]
+        @test toarray(id) ≈ I
+        @test fr ≈ @tensor fr2[1,2,3] := q[1,2,-1] * r[-1,3]
+
+        r,q = tensorrq(fr, ((1,),(2,3)))
+        @tensor id[1,2] := q'[1,-1,-2] * q[2,-1,-2]
+        @test toarray(id) ≈ I
+        @test fr ≈ @tensor fr2[1,2,3] := r[1,-1] * q[-1,2,3]
     end
 
     @testset "Reshaping" begin
@@ -551,6 +601,33 @@ end
         ar2 /= norm(ar2)
         ar /= norm(ar)
         @test dot(ar2,ar) > 1-0.001
+
+        ##tensorqr
+        ar = DASTensor{Float64,2}(NDAS(Z2(),U1()),
+            (NDASCharges(Z2Charges(), U1Charges(0:0)),
+             NDASCharges(Z2Charges(), U1Charges(0:0))),
+             ([200,200], [200,200]), io)
+        initwithrand!(ar)
+        q,r = tensorqr(ar,((1,),(2,)))
+        @tensor id[1,2] := q[1,-1] * q'[2,-1]
+        @test toarray(id) ≈ I
+        @tensor id[1,2] := q'[1,-1] * q[2,-1]
+        @test toarray(id) ≈ I
+        @test ar ≈ @tensor ar2[1,2] := q[1,-1] * r[-1,2]
+
+        f = DASTensor{Complex{Float64},3}(NDAS(Z2(),U1()), ntuple(x -> ndaschs, 3),
+                 ntuple(x -> ndasds, 3), InOut(-1,-1,1))
+        fr = initwithrand!(deepcopy(f))
+        fr = initwithrand!(fr)
+        q,r = tensorqr(fr, ((1,2),(3,)))
+        @tensor id[1,2] := q'[-1,-2,1] * q[-1,-2,2]
+        @test toarray(id) ≈ I
+        @test fr ≈ @tensor fr2[1,2,3] := q[1,2,-1] * r[-1,3]
+
+        r,q = tensorrq(fr, ((1,),(2,3)))
+        @tensor id[1,2] := q'[1,-1,-2] * q[2,-1,-2]
+        @test toarray(id) ≈ I
+        @test fr ≈ @tensor fr2[1,2,3] := r[1,-1] * q[-1,2,3]
     end
 
     @testset "Reshaping" begin
@@ -711,6 +788,28 @@ end
         ar2 /= norm(ar2)
         ar /= norm(ar)
         @test dot(ar2,ar) > 1-0.001
+
+        ##tensorqr
+        ar = DTensor{Float64,2}((200,200))
+        initwithrand!(ar)
+        q,r = tensorqr(ar,((1,),(2,)))
+        @tensor id[1,2] := q[1,-1] * q'[2,-1]
+        @test toarray(id) ≈ I
+        @tensor id[1,2] := q'[1,-1] * q[2,-1]
+        @test toarray(id) ≈ I
+        @test ar ≈ @tensor ar2[1,2] := q[1,-1] * r[-1,2]
+
+        fr = DTensor{Complex{Float64},3}((5,5,5))
+        fr = initwithrand!(fr)
+        q,r = tensorqr(fr, ((1,2),(3,)))
+        @tensor id[1,2] := q'[-1,-2,1] * q[-1,-2,2]
+        @test toarray(id) ≈ I
+        @test fr ≈ @tensor fr2[1,2,3] := q[1,2,-1] * r[-1,3]
+
+        r,q = tensorrq(fr, ((1,),(2,3)))
+        @tensor id[1,2] := q'[1,-1,-2] * q[2,-1,-2]
+        @test toarray(id) ≈ I
+        @test fr ≈ @tensor fr2[1,2,3] := r[1,-1] * q[-1,2,3]
     end
 
     @testset "Reshaping" begin

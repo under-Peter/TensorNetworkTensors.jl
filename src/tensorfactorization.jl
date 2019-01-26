@@ -187,3 +187,25 @@ function tensorqr(a::DASTensor{T,2,SYM}) where {T,SYM}
     end
     return (Q,R)
 end
+
+"""
+    tensorrq(A::AbstractTensor)
+
+returns tensor R,Q such that A = RQ and Q is
+obeys Q*Q' = 1 and R is triangular.
+This is simply a wrapper for `tensorqr`, useful for e.g. MPS canonicalization.
+"""
+function tensorrq end
+
+"""
+    tensorrq(A::AbstractTensor, inds)
+
+returns the `tensorrq` of `A` fused according to `inds`.
+"""
+function tensorrq(c, inds = ((1,),(2,)))
+    q, r = tensorqr(c, reverse(inds))
+    nq, nr = ndims.((q,r))
+    q = TO.tensorcopy(q, circshift(1:nq,-1),  1:nq)
+    r = TO.tensorcopy(r, circshift(1:nr,1), 1:nr)
+    return r, q
+end

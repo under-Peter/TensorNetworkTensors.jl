@@ -48,7 +48,7 @@ include("splitfuse.jl")
 
 #Factorizations of Tensors
 export tensorsvd, tensorsvd!
-export tensorqr
+export tensorqr, tensorrq
 export  svdtrunc_default,
         svdtrunc_discardzero,
         svdtrunc_maxχ,
