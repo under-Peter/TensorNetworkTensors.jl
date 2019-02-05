@@ -27,7 +27,7 @@ export chargeindex, ⊗, ⊕, DASSector, InOut, charge, deleteat, permute
 export allsectors, covariantsectors, invariantsectors
 export DASTensor
 export charges, sizes, in_out, tensor, symmetry, setcharges!, setsizes!, setin_out!,
-    settensor!, isinvariant, initwithrand!, initwithzero!
+    settensor!, isinvariant, initwithrand!, initwithzero!, setcharge!
 export chargestype, chargetype, dimstype, symmetry
 
 include("DASTensors.jl")

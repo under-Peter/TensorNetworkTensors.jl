@@ -420,6 +420,6 @@ function Base.copyto!(dest::TT, source::TT) where {TT <: DASTensor}
 end
 
 Base.similar(A::DASTensor{T,N,SYM}, ::Type{S}) where {T,N,SYM,S} =
-    DASTensor{S,N}(SYM, charges(A), deepcopy(sizes(A)), in_out(A), Dict(), charge(A))
+    DASTensor{S,N}(SYM, charges(A), deepcopy(sizes(A)), in_out(A),charge(A))
 
 Base.similar(A::DASTensor{T}) where T = similar(A,T)
