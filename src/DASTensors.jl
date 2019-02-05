@@ -91,11 +91,12 @@ Base.hash(a::DASSector, h::UInt) = hash(a.chs, h)
 ⊕(s1::DASSector{N,T}, s2::DASSector{N,T}) where {N,T} = DASSector(map(⊕, s1.chs, s2.chs))
 Base.getindex(s::DASSector,i::Int) = s.chs[i]
 permute(s::DASSector{N,T}, perm) where {N,T}  = DASSector{N,T}(TT.permute(s.chs,perm)...)
+
 """
     charge(a::DASSector)
-returns the charge which is calculated as the the sum of all charges it contains.
+returns the charge which is calculated as minus the sum of all charges it contains.
 """
-charge(s::DASSector) = reduce(⊕, s.chs)
+charge(s::DASSector) = -reduce(⊕, s.chs)
 Base.isless(a::T, b::T) where {T<:DASSector} = a.chs < b.chs
 Base.:(==)(a::T, b::T) where {T<:DASSector} = hash(a) == hash(b)
 Base.:(==)(a::DASSector, b::DASSector) = false
@@ -174,7 +175,7 @@ allsectors(a::NTuple{N,DASCharges}) where N = (DASSector(s...) for s in Iterator
 returns  all sectors in allsectors(io ⊗ chs) that have total charge ch
 """
 covariantsectors(charges, io::InOut, ch = zero(eltype(first(charges)))) =
-    Iterators.filter(==(ch) ∘ charge ∘ ⊗(io), allsectors(charges))
+    Iterators.filter(==(-ch) ∘ charge ∘ ⊗(io), allsectors(charges))
 
 """
     covariantsectors(chs, io)
@@ -187,20 +188,28 @@ mutable struct DASTensor{T,N,SYM,CHARGES,SIZES,CHARGE} <: AbstractTensor{T,N}
     chs     ::NTuple{N, CHARGES}
     dims    ::NTuple{N, SIZES}
     io      ::InOut{N}
+    ch      ::Union{CHARGE, Missing}
     tensor  ::Dict{DASSector{N,CHARGE},Array{T,N}}
 end
 
 function Base.show(io::IO, A:: DASTensor{T,N,SYM}) where {T,N,SYM}
     print(io, "DASTensor{",T,",",N,",",SYM,"}\n")
     print(io, "charges: ", charges(A), "\n")
+    print(io, "charge: ",  charge(A), "\n")
     print(io, "sizes: ",   sizes(A), "\n")
     print(io, "in/out: ",  in_out(A), "\n")
     print(io, "Tensors ",  eltype(A), "\n")
 end
 
 ##Functions
-DASTensor{T,N}(sym::ST,charges, dims, io, dict=Dict()) where {T,N,ST <: DAS} =
-    DASTensor{T,N,sym,chargestype(sym),Vector{Int},chargetype(sym)}(charges,dims,io,dict)
+function DASTensor{T,N}(sym::ST, charges, dims, io,
+    ch = zero(chargetype(sym)), dict = Dict()) where {T,N,ST <: DAS}
+    length.(dims) == length.(charges) || throw(ArgumentError("incompatible dims/charges"))
+    CHARGES = chargestype(sym)
+    CHARGE  = chargetype(sym)
+    SIZES   = Vector{Int}
+    DASTensor{T,N,sym,CHARGES,SIZES,CHARGE}(charges,dims,io,ch,dict)
+end
 
 """
     charges(A::DASTensor[,i])
@@ -220,9 +229,9 @@ space associated with a charge `ch` has size `v[chargeindex(ch, chs)]` where
 If `i` is specified as either `Int` or `Tuple`, returns only the charges of the
 indices in `i`.
 """
-sizes(A::DASTensor)          = A.dims
-sizes(A::DASTensor,i::Int)   = A.dims[i]
-sizes(A::DASTensor,i)        = TT.getindices(A.dims,i)
+sizes(A::DASTensor)        = A.dims
+sizes(A::DASTensor,i::Int) = A.dims[i]
+sizes(A::DASTensor,i)      = TT.getindices(A.dims,i)
 
 """
     in_out(A::DASTensor[,i])
@@ -231,8 +240,8 @@ on the corresponding leg.
 If `i` is specified as either `Int` or `Tuple`, returns only the charges of the
 indices in `i`.
 """
-in_out(A::DASTensor)    = A.io
-in_out(A::DASTensor,i)  = A.io[i]
+in_out(A::DASTensor)   = A.io
+in_out(A::DASTensor,i) = A.io[i]
 
 """
     tensor(A::DASTensor[,i])
@@ -276,18 +285,10 @@ settensor!(A::DASTensor, tensor)   = (A.tensor  = tensor;  A)
 
 """
     charge(a::DASTensor)
-returns the charge which is calculated as the charge of its non-zero sectors which
-needs to be unique.
+returns the charge of a tensor.
 """
-function charge(a::DASTensor)
-    io = in_out(a)
-    och = charge(io ⊗ first(keys(a)))
-    for k in keys(a)
-        och == charge(io ⊗ k) || throw(
-            ArgumentError("Tensor does not have unique charge"))
-    end
-    return och
-end
+charge(A::DASTensor) = A.ch
+setcharge!(A::DASTensor, ch) = (A.ch = ch; A)
 
 """
     isinvariant(a::DASTensor)
@@ -295,7 +296,11 @@ return true if `charge(a)` is `zero`.
 """
 isinvariant(a::DASTensor) = iszero(charge(a))
 
-chargesize(charge::DASCharge, charges, dims) = dims[chargeindex(charge, charges)]
+function chargesize(charge::DASCharge, charges, dims)
+    charge in charges || throw(
+        ArgumentError(string(charge, " is not in ", charges)))
+    dims[chargeindex(charge, charges)]
+end
 chargesize(A::DASTensor, i, charge)          = chargesize(charge, charges(A,i), sizes(A,i))
 degeneracysize(sector, charges, dims)        = map(chargesize, sector, charges, dims)
 
@@ -304,10 +309,10 @@ degeneracysize(sector, charges, dims)        = map(chargesize, sector, charges, 
 modifies `A` such that each sector with charge `ch` (default=zero) is (independently)
 set to `fun(T, dims...)` where `dims` is the size of the degeneracy space for the sector.
 """
-function initwith!(A::DASTensor{T,N}, fun, ch = zero(eltype(first(charges(A))))) where {T,N}
+function initwith!(A::DASTensor{T,N}, fun) where {T,N}
     empty!(A.tensor)
     dims, chs = sizes(A), charges(A)
-    for k in covariantsectors(charges(A), in_out(A), ch)
+    for k in covariantsectors(chs, in_out(A), charge(A))
         A.tensor[k] = fun(T, degeneracysize(k, chs, dims)...)
     end
     return A
@@ -320,18 +325,18 @@ function Base.rand(::Type{DASTensor{T,N}}, sym, charges, dims, io,
 end
 
 """
-    initwithzero!(A::DASTensor [, ch])
-construct all valid sectors with charge `ch` (default=0) in `A` and initialize their
+    initwithzero!(A::DASTensor)
+construct all valid sectors  in `A` and initialize their
 degeneracy spaces with zeros.
 """
-initwithzero!(A::DASTensor, ch = zero(eltype(first(charges(A))))) = initwith!(A, zeros, ch)
+initwithzero!(A::DASTensor) = initwith!(A, zeros)
 
 """
-    initwithrand!(A::DASTensor [, ch])
-construct all valid sectors with charge `ch` (default=0) in `A` and initialize their
+    initwithrand!(A::DASTensor)
+construct all valid sectors in `A` and initialize their
 degeneracy spaces with `rand`.
 """
-initwithrand!(A::DASTensor, ch = zero(eltype(first(charges(A))))) = initwith!(A, rand,  ch)
+initwithrand!(A::DASTensor) = initwith!(A, rand)
 
 function Base.convert(::Type{Array{S}}, A::DASTensor{T,N,<:Any,CHARGES,SIZES,CHARGE}) where
         {S,T,N,CHARGES,SIZES,CHARGE}
@@ -406,17 +411,15 @@ function Base.copyto!(dest::TT, source::TT) where {TT <: DASTensor}
     setcharges!(dest, charges(source))
     setsizes!(dest, deepcopy(sizes(source)))
     setin_out!(dest, in_out(source))
+    setcharge!(dest, charge(source))
+    empty!(dest.tensor)
     for (k,v) in source.tensor
-        if haskey(dest.tensor,k)
-            copyto!(dest[k], v)
-        else
-            dest[k] = copy(v)
-        end
+        dest.tensor[k] = copy(v)
     end
     return dest
 end
 
 Base.similar(A::DASTensor{T,N,SYM}, ::Type{S}) where {T,N,SYM,S} =
-    DASTensor{S,N}(SYM, charges(A), deepcopy(sizes(A)), in_out(A))
+    DASTensor{S,N}(SYM, charges(A), deepcopy(sizes(A)), in_out(A), Dict(), charge(A))
 
 Base.similar(A::DASTensor{T}) where T = similar(A,T)

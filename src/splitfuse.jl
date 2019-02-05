@@ -163,7 +163,7 @@ function fusiondict(ochs::NTuple{M, CHARGES},
                     ods::NTuple{M},
                     indexes::NTuple{M,Int},
                     ld::InOut{1}) where {M,CHARGES}
-    nchs = ⊕(ochs...)
+    nchs = ⊕((oios ⊗ ochs)...)
     l, ln = prod(length.(ochs)), length(nchs)
     CHARGE = eltype(ochs[1])
     dims    = zeros(Int, ln)
@@ -171,7 +171,7 @@ function fusiondict(ochs::NTuple{M, CHARGES},
     chs     = Vector{CHARGE}(undef, l)
     ranges  = Vector{UnitRange{Int}}(undef, l)
     for (i, sec) in enumerate(allsectors(ochs))
-        nch = ld ⊗ charge(oios ⊗ sec)
+        nch = inv(ld) ⊗ charge(oios ⊗ sec)
         d   = chargedim(M, ods, sec, ochs)
         nd = dims[chargeindex(nch, nchs)]
         ranges[i]  = (1:d) .+ nd
@@ -210,8 +210,8 @@ function fuselegs(A::DASTensor{T,N,SYM}, indexes, lds::InOut{M}) where {M,T,N,SY
     newds  = ntuple(i -> copy(rs[i].dims), M)
     newios = reduce(vcat, ntuple(i -> rs[i].nios, M))
 
-    AF = DASTensor{T,M}(SYM, newchs, newds, newios)
-    initwithzero!(AF, charge(A))
+    AF = DASTensor{T,M}(SYM, newchs, newds, newios, charge(A))
+    initwithzero!(AF)
     fuselegs!(AF, A, indexes, lds, rs)
 end
 
@@ -269,8 +269,8 @@ function splitlegs(A::DASTensor{T,N,SYM},
     ndims    = deepcopy(splitpick(tinds, sizes(A),   getproperty.(rs,:ods )))
     nios     = reduce(vcat, splitpick(tinds, in_out(A),  getproperty.(rs,:oios)))
 
-    AS = DASTensor{T,M}(SYM, ncharges, ndims, nios)
-    initwithzero!(AS, charge(A))
+    AS = DASTensor{T,M}(SYM, ncharges, ndims, nios, charge(A))
+    initwithzero!(AS)
     return splitlegs!(AS, A, inds, rs...)
 end
 

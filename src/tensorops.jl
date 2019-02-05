@@ -19,5 +19,6 @@ apply(A::DASTensor, fun!) = apply!(deepcopy(A), fun!)
 function Base.adjoint(A::DASTensor)
     B = apply(A, conj!)
     B.io = inv(B.io)
+    setcharge!(B, -charge(A))
     return B
 end

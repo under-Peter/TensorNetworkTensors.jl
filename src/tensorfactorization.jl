@@ -110,7 +110,7 @@ function tensorsvd(A::DASTensor{T,N,SYM,CHARGES,SIZES,CHARGE};
 
     U  = DASTensor{T,N}(SYM, (charges(A,1), lch),
             deepcopy.((sizes(A,1), ld)),
-            in_out(A))
+            in_out(A), charge(A))
     S  = DASTensor{T,N}(SYM, (lch, lch),
             deepcopy.((ld, ld)),
             vcat(inv(in_out(A,2)), in_out(A,2)))
@@ -176,7 +176,7 @@ function tensorqr(a::DASTensor{T,2,SYM}) where {T,SYM}
 
     Q = DASTensor{T,2}(SYM, (charges(a,1), lch),
             deepcopy.((sizes(a,1), ld)),
-            in_out(a))
+            in_out(a), charge(a))
     R = DASTensor{T,2}(SYM, (lch, charges(a,2)),
             deepcopy((ld,sizes(a,2))),
             vcat(inv(in_out(a,2)), in_out(a,2)))

@@ -73,11 +73,11 @@ function TO.checked_similar_from_indices(C, ::Type{T}, ind,
     chs = charges(A,ind)
 
     if C !== nothing && C isa DASTensor && dims == sizes(C) && ios == in_out(C) &&
-            chs == charges(C) && T == eltype(C)
+            chs == charges(C) && T == eltype(C) && charge(C) == charge(A)
         CT = DASTensor{T,length(ind),CHS,SS,CH}
         return C::CT
     else
-        return DASTensor{T,length(ind)}(SYM, chs, deepcopy(dims), ios)
+        return DASTensor{T,length(ind)}(SYM, chs, deepcopy(dims), ios, charge(A))
     end
 end
 
@@ -96,11 +96,11 @@ function TO.checked_similar_from_indices(C, ::Type{T}, poA, poB, ind,
     ios = vcat(ifelse(CA == :N, in_out(A,poA), inv(in_out(A,poA))),
                 ifelse(CB == :N, in_out(B,poB), inv(in_out(B,poB))))[ind]
     if C !== nothing && C isa DASTensor && dims == sizes(C) && ios == in_out(C) &&
-            chs == charges(C) && T == eltype(C)
+            chs == charges(C) && T == eltype(C) && charge(C) == charge(A) ⊕ charge(B)
         CT = DASTensor{T,length(ind),SYM,CHS,SS,CH}
         return C::CT
     else
-        return DASTensor{T,length(ind)}(SYM,chs, deepcopy(dims), ios)
+        return DASTensor{T,length(ind)}(SYM,chs, deepcopy(dims), ios, charge(A) ⊕ charge(B))
     end
 end
 

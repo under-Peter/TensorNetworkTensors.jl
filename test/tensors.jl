@@ -136,8 +136,8 @@ using LinearAlgebra
         @test fr2 ≈ fr
 
         ## with charge
-        ar = DASTensor{Float64,2}(U1(), (u1chs, u1chs), (u1ds, u1ds), io)
-        initwithrand!(ar, U1Charge(1))
+        ar = DASTensor{Float64,2}(U1(), (u1chs, u1chs), (u1ds, u1ds), io, U1Charge(1))
+        initwithrand!(ar)
         @test charge(ar) == U1Charge(1)
         ua, sa, vda = tensorsvd(ar)
         @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
@@ -351,8 +351,8 @@ end
         @test fr2 ≈ fr
 
         ## with charge
-        ar = DASTensor{Float64,2}(Z2(), (z2chs, z2chs), (z2ds, z2ds), io)
-        initwithrand!(ar, Z2Charge(1))
+        ar = DASTensor{Float64,2}(Z2(), (z2chs, z2chs), (z2ds, z2ds), io, Z2Charge(1))
+        initwithrand!(ar)
         @test charge(ar) == Z2Charge(1)
         ua, sa, vda = tensorsvd(ar)
         @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
@@ -570,8 +570,13 @@ end
         @test fr2 ≈ fr
 
         ## with charge
-        ar = DASTensor{Float64,2}(NDAS(Z2(),U1()), (ndaschs, ndaschs), (ndasds, ndasds), io)
-        initwithrand!(ar, NDASCharge(Z2Charge(1), U1Charge(1)))
+        ar = DASTensor{Float64,2}(
+            NDAS(Z2(),U1()),
+            (ndaschs, ndaschs),
+            (ndasds, ndasds),
+            io,
+            NDASCharge(Z2Charge(1), U1Charge(1)))
+        initwithrand!(ar)
         @test charge(ar) == NDASCharge(Z2Charge(1), U1Charge(1))
         ua, sa, vda = tensorsvd(ar)
         @tensor ar2[1,2] := ua[1,-1] * sa[-1,-2] * vda[-2,2]
