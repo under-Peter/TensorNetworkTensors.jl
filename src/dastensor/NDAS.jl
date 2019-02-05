@@ -78,6 +78,7 @@ Base.zero(::Type{NDASCharge{N,T}}) where {N,T} = NDASCharge{N,T}(ntuple(i -> zer
 Base.zero(::NDASCharge{N,T}) where {N,T} = NDASCharge{N,T}(ntuple(i -> zero(T.types[i]), N)...)
 Base.:+(chs::T, ch::S) where {T<:NDASCharges, S<:NDASCharge} = NDASCharges(map(+, chs.v, ch.ch)...)
 function chargeindex(ch::NDASCharge, chs::NDASCharges)
+    ch in chs || throw(ArgumentError(string(ch, " not in ", chs)))
     linds = LinearIndices(map(x -> 1:x, length.(chs.v)))
     inds = map(chargeindex, ch.ch, chs.v)
     linds[inds...]

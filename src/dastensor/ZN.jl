@@ -54,7 +54,10 @@ end
 Base.show(io::IO, s::ZNCharge{N}) where N = print(io,"Z",N,"Charge(",s.ch,")")
 
 ⊕(a::ZNCharge{N}, b::ZNCharge{N}) where N = ZNCharge{N}(a.ch + b.ch)
-chargeindex(ch::ZNCharge{N}, chs::ZNCharges{N}) where N = (ch.ch + 1)
+function chargeindex(ch::ZNCharge{N}, chs::ZNCharges{N}) where N
+    ch in chs || throw(ArgumentError(string(ch, " not in ", chs)))
+    (ch.ch + 1)
+end
 chargetype(::ZN{N}) where N = ZNCharge{N}
 Base.zero(::Type{ZNCharge{N}}) where N = ZNCharge{N}(zero(Int))
 Base.:+(chs::ZNCharges{N}, ch::ZNCharge{N}) where N = ZNCharges{N}()

@@ -54,7 +54,10 @@ end
 Base.show(io::IO, s::U1Charge) = print(io,"U1Charge(",s.ch,")")
 
 ⊕(a::U1Charge, b::U1Charge) = U1Charge(a.ch + b.ch)
-chargeindex(ch::U1Charge, chs::U1Charges) = div(ch.ch - chs.v.start, chs.v.step)+1
+function chargeindex(ch::U1Charge, chs::U1Charges)
+    ch in chs || throw(ArgumentError(string(ch, " not in ", chs)))
+    div(ch.ch - chs.v.start, chs.v.step)+1
+end
 chargetype(::U1) = U1Charge
 Base.zero(::Type{U1Charge}) = U1Charge(zero(Int))
 Base.:+(chs::U1Charges, ch::U1Charge) = U1Charges(chs.v .+ ch.ch)
