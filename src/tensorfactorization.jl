@@ -131,9 +131,14 @@ function tensorsvd(A::DASTensor{T,N,SYM,CHARGES,SIZES,CHARGE};
 end
 
 function connectingcharge(A)
-    chs1, chs2 = in_out(A) ⊗ charges(A)
+    chs1, chs2 = charges(A)
+    io = in_out(A)
+    io[1] == InOut(-1) || (chs1 = inv(chs1))
+    io[2] == InOut( 1) || (chs2 = inv(chs2))
     chs1 += charge(A)
-    return in_out(A,2) ⊗ (chs1 ∩ chs2)
+    lch = chs1 ∩ chs2
+    io[2] == InOut( 1) || return inv(lch)
+    return lch
 end
 
 
