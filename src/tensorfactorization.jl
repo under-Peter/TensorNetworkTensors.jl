@@ -130,14 +130,23 @@ function tensorsvd(A::DASTensor{T,N,SYM,CHARGES,SIZES,CHARGE};
     return (U, S, Vd)
 end
 
-function connectingcharge(A)
+"""
+    connectingcharge(A)
+where A is a rank-2 DASTensor,
+returns the charges on the second index that can be realized
+given the charges on the first index and the charge of A.
+"""
+function connectingcharge(A::DASTensor{<:Any,2})
     chs1, chs2 = charges(A)
     io = in_out(A)
-    io[1] == InOut(-1) || (chs1 = inv(chs1))
-    io[2] == InOut( 1) || (chs2 = inv(chs2))
+    io[1] == InOut(-1) && (chs1 = inv(chs1))
+    io[2] == InOut( 1) && (chs2 = inv(chs2))
+    #                         (1)ch
+    #                          ↓
+    #canonical form: chs1 →(1)→A→(-1)→ lch = chs1 + ch ∩ chs2
     chs1 += charge(A)
     lch = chs1 ∩ chs2
-    io[2] == InOut( 1) || return inv(lch)
+    io[2] == InOut(1) && return inv(lch)
     return lch
 end
 

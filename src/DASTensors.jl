@@ -175,7 +175,7 @@ allsectors(a::NTuple{N,DASCharges}) where N = (DASSector(s...) for s in Iterator
 returns  all sectors in allsectors(io ⊗ chs) that have total charge ch
 """
 covariantsectors(charges, io::InOut, ch = zero(eltype(first(charges)))) =
-    Iterators.filter(==(-ch) ∘ charge ∘ ⊗(io), allsectors(charges))
+    Iterators.filter(==(ch) ∘ charge ∘ ⊗(io), allsectors(charges))
 
 """
     covariantsectors(chs, io)

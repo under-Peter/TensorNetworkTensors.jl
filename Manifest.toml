@@ -1,12 +1,14 @@
+# This file is machine-generated - editing it directly is not advised
+
 [[Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 
 [[Distributed]]
-deps = ["LinearAlgebra", "Random", "Serialization", "Sockets"]
+deps = ["Random", "Serialization", "Sockets"]
 uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 
 [[InteractiveUtils]]
-deps = ["LinearAlgebra", "Markdown"]
+deps = ["Markdown"]
 uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 
 [[Libdl]]
@@ -51,15 +53,15 @@ uuid = "6462fe0b-24de-5631-8697-dd941f90decc"
 
 [[Strided]]
 deps = ["LinearAlgebra", "Random", "Test", "TupleTools"]
-git-tree-sha1 = "e847369ec8911ee44773b7b9beb68d186fa7c65b"
+git-tree-sha1 = "d9d0d8586d777e77654709cc872b6de15f8e2578"
 uuid = "5e0ebb24-38b0-5f93-81fe-25c709ecae67"
-version = "0.2.4"
+version = "0.2.5"
 
 [[TensorOperations]]
 deps = ["LinearAlgebra", "Random", "Strided", "Test", "TupleTools"]
-git-tree-sha1 = "bbc38d24852abfbdcc6f554a8c80e894c2b790b9"
+git-tree-sha1 = "b5b20e1133bcad4f0f1beb4e4849d5e607c32eeb"
 uuid = "6aa20fa7-93e2-5fca-9bc0-fbd0db3c71a2"
-version = "1.0.2"
+version = "1.0.3"
 
 [[Test]]
 deps = ["Distributed", "InteractiveUtils", "Logging", "Random"]
