@@ -223,3 +223,72 @@ function tensorrq(c, inds = ((1,),(2,)))
     r = TO.tensorcopy(r, circshift(1:nr,1), 1:nr)
     return r, q
 end
+
+function tensoreig end
+
+function tensoreig(A::AbstractTensor, indexes; truncfun = svdtrunc_default)
+    fA, rs = fuselegs(A, indexes)
+    E, D, Ep = tensoreig(fA, truncfun=svdtrunc)
+    li1, li2 = length.(indexes)
+
+    if indexes[1] isa Tuple
+        indxs = (ntuple(x -> (1,1,x), li1)..., 2)
+        E = splitlegs(E, indxs, rs...)
+    end
+    if indexes[2] isa Tuple
+        indxs = (1, ntuple(x -> (2,2,x), li2)...)
+        Ep = splitlegs(Ep, indxs, rs...)
+    end
+    return (E, D, Ep)
+end
+
+function _tensoreig(a::Matrix; truncfun = length, helper=false)
+    if LA.ishermitian(a)
+        evals, evecs = LA.eigen(LA.Hermitian(a))
+    else
+        evals, evecs = LA.eigen(a)
+    end
+
+    p = sortperm(evals, by=abs, rev=true)
+    evals = evals[p]
+    evecs = evecs[:,p]
+    cutoff = truncfun(evals)
+    E = evecs[:,1:cutoff]
+    d = LA.diagm(0 => evals[1:cutoff])
+    helper && return E, d, E', cutoff
+    return E, d, E'
+end
+
+function tensoreig(a::DTensor{T,2}; truncfun = length) where T
+    E, d, Ep = _tensoreig(a.array, truncfun = truncfun)
+    DTensor(E), DTensor(d), DTensor(collect(Ep))
+end
+
+function tensoreig(A::DASTensor{T,N,SYM,CHARGES,SIZES,CHARGE};
+                   truncfun = svdtrunc_default) where
+                   {T,N,SYM,CHARGES,SIZES,CHARGE}
+    N == 2 || throw(ArgumentError("EIG only works on rank 2 tensors"))
+    lch = connectingcharge(A)
+    ld =  sizes(A,2)[[chargeindex(c,charges(A,2)) for c in lch]]
+
+    E  = DASTensor{T,N}(SYM, (charges(A,1), lch),
+            deepcopy.((sizes(A,1), ld)),
+            in_out(A), charge(A))
+    D  = DASTensor{T,N}(SYM, (lch, lch),
+            deepcopy.((ld, ld)),
+            vcat(inv(in_out(A,2)), in_out(A,2)))
+    Ep = DASTensor{T,N}(SYM, (lch, charges(A,2)),
+            deepcopy((ld,sizes(A,2))),
+            vcat(inv(in_out(A,2)), in_out(A,2)))
+
+    for (k, degen) in tensor(A)
+        in, out = k[1], k[2]
+        E[DASSector(in, out)], D[DASSector(out, out)], Ep[DASSector(out, out)], cutoff =
+                _tensoreig(degen, truncfun = truncfun, helper = true)
+        E.dims[2][chargeindex(out,charges(E,2))] = cutoff
+        D.dims[1][chargeindex(out,charges(D,1))] = cutoff
+        D.dims[2][chargeindex(out,charges(D,2))] = cutoff
+        Ep.dims[1][chargeindex(out,charges(Ep,1))] = cutoff
+    end
+    return (E, D, Ep)
+end
