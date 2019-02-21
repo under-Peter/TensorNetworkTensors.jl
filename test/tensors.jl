@@ -188,6 +188,28 @@ using LinearAlgebra
         @test fr ≈ @tensor fr2[1,2,3] := r[1,-1] * q[-1,2,3]
     end
 
+    @testset "pinv" begin
+        ar = DASTensor{Float64,2}(
+            U1(),
+            (U1Charges(-1:1), U1Charges(-1:1)),
+            ([10,10,10], [10,10,10]),
+            InOut(1,-1))
+        initwithrand!(ar)
+        ari = pinv(ar)
+        @tensor id[1,2] := ar[1,-1] * ari[-1,2]
+        @test all(v ≈ I for v in values(id))
+
+        ar = DASTensor{Float64,2}(
+            U1(),
+            (U1Charges(-1:1), U1Charges(-1:1)),
+            (fill(10,3),fill(4,3)),
+            InOut(1,-1))
+        initwithrand!(ar)
+        ari = pinv(ar)
+        @tensor id[1,2] := ari[1,-1] * ar[-1,2]
+        @test all(v ≈ I for v in values(id))
+    end
+
     @testset "Reshaping" begin
         ##without permutation
         f = DASTensor{Complex{Float64},6}(U1(), ntuple(x -> u1chs, 6),
@@ -407,6 +429,26 @@ end
         @tensor id[1,2] := q'[1,-1,-2] * q[2,-1,-2]
         @test toarray(id) ≈ I
         @test fr ≈ @tensor fr2[1,2,3] := r[1,-1] * q[-1,2,3]
+    end
+
+    @testset "pinv" begin
+        ar = DASTensor{ComplexF64,2}(ZN{2}(),
+            ntuple(i -> ZNCharges{2}(),2),
+            ([4,4], [4,4]),
+            InOut(ntuple(i -> -1, 2)...))
+        initwithrand!(ar)
+        ari = pinv(ar)
+        @tensor id[1,2] := ar[1,-1] * ari[-1,2]
+        @test all(v ≈ I for v in values(id))
+
+        ar = DASTensor{ComplexF64,2}(ZN{2}(),
+            ntuple(i -> ZNCharges{2}(),2),
+            ([10,10], [4,4]),
+            InOut(ntuple(i -> -1, 2)...))
+        initwithrand!(ar)
+        ari = pinv(ar)
+        @tensor id[1,2] := ari[1,-1] * ar[-1,2]
+        @test all(v ≈ I for v in values(id))
     end
 
     @testset "Reshaping" begin
@@ -635,6 +677,26 @@ end
         @test fr ≈ @tensor fr2[1,2,3] := r[1,-1] * q[-1,2,3]
     end
 
+    @testset "pinv" begin
+        ar = DASTensor{Float64,2}(NDAS(Z2(),U1()),
+            (NDASCharges(Z2Charges(), U1Charges(0:0)),
+             NDASCharges(Z2Charges(), U1Charges(0:0))),
+             ([200,200], [200,200]), InOut(1,-1))
+        initwithrand!(ar)
+        ari = pinv(ar)
+        @tensor id[1,2] := ar[1,-1] * ari[-1,2]
+        @test all(v ≈ I for v in values(id))
+
+        ar = DASTensor{Float64,2}(NDAS(Z2(),U1()),
+            (NDASCharges(Z2Charges(), U1Charges(0:0)),
+             NDASCharges(Z2Charges(), U1Charges(0:0))),
+             ([200,200], [20,20]), InOut(1,-1))
+        initwithrand!(ar)
+        ari = pinv(ar)
+        @tensor id[1,2] := ari[1,-1] * ar[-1,2]
+        @test all(v ≈ I for v in values(id))
+    end
+
     @testset "Reshaping" begin
         ##without permutation
         f = DASTensor{Complex{Float64},6}(NDAS(Z2(),U1()), ntuple(x -> ndaschs, 6),
@@ -815,6 +877,20 @@ end
         @tensor id[1,2] := q'[1,-1,-2] * q[2,-1,-2]
         @test toarray(id) ≈ I
         @test fr ≈ @tensor fr2[1,2,3] := r[1,-1] * q[-1,2,3]
+    end
+
+    @testset "pinv" begin
+        ar =  DTensor{ComplexF64,2}((200,200))
+        initwithrand!(ar)
+        ari = pinv(ar)
+        @tensor id[1,2] := ar[1,-1] * ari[-1,2]
+        @test toarray(id) ≈ I
+
+        ar =  DTensor{ComplexF64,2}((200,20))
+        initwithrand!(ar)
+        ari = pinv(ar)
+        @tensor id[1,2] := ari[1,-1] * ar[-1,2]
+        @test toarray(id) ≈ I
     end
 
     @testset "Reshaping" begin
