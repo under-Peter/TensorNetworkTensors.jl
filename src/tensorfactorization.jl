@@ -93,11 +93,7 @@ end
 
 #DTensor
 function tensorsvd(A::DTensor{T,2}; svdtrunc = svdtrunc_default) where T
-    U, S, Vd = _tensorsvd(A.array, svdtrunc = svdtrunc)
-    TT = promote_type(eltype.((U,S,Vd))...)
-    return (DTensor(convert(Array{TT}, U)),
-            DTensor(convert(Array{TT}, S)),
-            DTensor(convert(Array{TT}, Vd)))
+    DTensor.(_tensorsvd(A.array, svdtrunc = svdtrunc))
 end
 
 #DASTensor
@@ -111,7 +107,7 @@ function tensorsvd(A::DASTensor{T,N,SYM,CHARGES,SIZES,CHARGE};
     U  = DASTensor{T,N}(SYM, (charges(A,1), lch),
             deepcopy.((sizes(A,1), ld)),
             in_out(A), charge(A))
-    S  = DASTensor{T,N}(SYM, (lch, lch),
+    S  = DASTensor{real(T),N}(SYM, (lch, lch),
             deepcopy.((ld, ld)),
             vcat(inv(in_out(A,2)), in_out(A,2)))
     Vd = DASTensor{T,N}(SYM, (lch, charges(A,2)),
