@@ -53,15 +53,15 @@ uuid = "6462fe0b-24de-5631-8697-dd941f90decc"
 
 [[Strided]]
 deps = ["LinearAlgebra", "Random", "Test", "TupleTools"]
-git-tree-sha1 = "d9d0d8586d777e77654709cc872b6de15f8e2578"
+git-tree-sha1 = "ca8aedf595c92f04929cb6d33c18624f991b194b"
 uuid = "5e0ebb24-38b0-5f93-81fe-25c709ecae67"
-version = "0.2.5"
+version = "0.2.6"
 
 [[TensorOperations]]
 deps = ["LinearAlgebra", "Random", "Strided", "Test", "TupleTools"]
-git-tree-sha1 = "b5b20e1133bcad4f0f1beb4e4849d5e607c32eeb"
+git-tree-sha1 = "7cd4a4404c851e8ef8f26bd3c3569bec5130ddec"
 uuid = "6aa20fa7-93e2-5fca-9bc0-fbd0db3c71a2"
-version = "1.0.3"
+version = "1.0.4"
 
 [[Test]]
 deps = ["Distributed", "InteractiveUtils", "Logging", "Random"]
