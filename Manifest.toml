@@ -69,6 +69,6 @@ uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [[TupleTools]]
 deps = ["Random", "Test"]
-git-tree-sha1 = "781df0cfac68723c3800eb9344b85bd86f9e424b"
+git-tree-sha1 = "b006524003142128cc6d36189dce337729aa0050"
 uuid = "9d95972d-f1c8-5527-a6e0-b4b365fa01f6"
-version = "1.0.2"
+version = "1.1.0"

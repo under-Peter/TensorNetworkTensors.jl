@@ -72,7 +72,7 @@ function fuselegs!(AF::DTensor{T}, A::DTensor{T}, indexes) where T
     perm = TT.vcat(indexes...)
 	dims = size(AF)
 	s = size(A)
-	tmp = reshape(AF.array, size(A))
+	tmp = reshape(AF.array, TT.getindices(size(A),perm))
 	permutedims!(tmp, A.array, perm)
 	copyto!(AF.array, reshape(tmp, dims))
     rs = tuple((TT.getindices(s,i) for i in indexes if i isa Tuple)...)
