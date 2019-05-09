@@ -1,4 +1,11 @@
 # TensorNetworkTensors.jl
+  3 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://under-Peter.github.io/TensorNetworkTensors.jl/stable)
+  4 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://under-Peter.github.io/TensorNetworkTensors.jl/dev)
+  5 [![Build Status](https://travis-ci.com/under-Peter/TensorNetworkTensors.jl.svg?branch=master)](https://travis-ci.com/under-Peter/TensorNetworkTensors.    jl)
+  6 [![Build Status](https://ci.appveyor.com/api/projects/status/github/under-Peter/TensorNetworkTensors.jl?svg=true)](https://ci.appveyor.com/     project/under-Peter/TensorNetworkTensors-jl)
+  7 [![Codecov](https://codecov.io/gh/under-Peter/TensorNetworkTensors.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/under-Peter/        TensorNetworkTensors.jl)
+  8 [![Coveralls](https://coveralls.io/repos/github/under-Peter/TensorNetworkTensors.jl/badge.svg?branch=master)](https://coveralls.io/github/      under-Peter/TensorNetworkTensors.jl?branch=master)
+
 Tensors for Tensor Network Methods.
 `TensorNetworkTensors.jl` overloads methods from `TensorOperations` and `KrylovKit` to work with Tensors that might be symmetric under some abelina symmetry.
 
